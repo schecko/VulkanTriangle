@@ -39,6 +39,7 @@ struct MainMemory
 
     VkInstance vkInstance;
     VkPhysicalDevice vkPhysicalDevice;
+    uint32_t renderingQueueFamilyIndex;
 
 
 };
@@ -112,7 +113,7 @@ HWND NewWindow(void* pointer)
     wc.hInstance = GetModuleHandle(nullptr);
     wc.lpszClassName = EXE_NAME;
     wc.lpszMenuName = EXE_NAME;
-    wc.cbClsExtra = sizeof(void*);
+    wc.cbWndExtra = sizeof(void*);
 
 
     ATOM result = 0;
@@ -131,7 +132,7 @@ HWND NewWindow(void* pointer)
                                      nullptr,
                                      nullptr,
                                      wc.hInstance,
-                                     &pointer);
+                                     pointer);
 
     Assert(windowHandle != nullptr, "could not create a windows window");
 
@@ -217,7 +218,30 @@ std::vector<VkPhysicalDevice> EnumeratePhysicalDevices(VkInstance vkInstance, ui
     return physicalDevices;
 }
 
-//windows entrypoint, replacing with winmain seems redundant to me (plus I dont remember its function signature)
+//from the physicaldevice as a param, returns a grphics queueFamily cabable of a rendering pipeline.
+uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice)
+{
+
+    uint32_t queueCount = 0;
+    uint32_t graphicsQueueIndex = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueCount, nullptr);
+    Assert(queueCount > 0, "physical device has no available queues");
+
+    std::vector<VkQueueFamilyProperties> queueProperties(queueCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueCount, queueProperties.data());
+
+    for (; graphicsQueueIndex < queueCount; graphicsQueueIndex++)
+    {
+        if (queueProperties[graphicsQueueIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            break;
+    }
+
+    Assert(graphicsQueueIndex < queueCount, "this gpu doesn't support graphics rendering.... what a useful gpu");
+
+    return graphicsQueueIndex;
+}
+
+//windows entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
 int main(int argv, char** argc)
 {
     MainMemory* mainMemory = new MainMemory();
@@ -232,14 +256,29 @@ int main(int argv, char** argc)
     std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(mainMemory->vkInstance, &gpuCount);
     mainMemory->vkPhysicalDevice = physicalDevices[0];
 
+    //see what the gpu is capable of
+    //NOTE not actually used in other code
+    VkPhysicalDeviceFeatures deviceFeatures = {};
+    vkGetPhysicalDeviceFeatures(mainMemory->vkPhysicalDevice, &deviceFeatures);
 
+    mainMemory->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(mainMemory->vkPhysicalDevice);
 
     ///
-    //physical device
+    //temp area in prep for function creation
     ///
 
+    //currently in VkResult VulkanExampleBase::createDevice(VkDeviceQueueCreateInfo requestedQueues, bool enableValidation)
+    float queuePriorities[1] = { 0.0f };
+    VkDeviceQueueCreateInfo queueCreateInfo = {};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = mainMemory->renderingQueueFamilyIndex;
+    queueCreateInfo.queueCount = 1;
+    queueCreateInfo.pQueuePriorities = queuePriorities;
+
+    std::vector<const char*> enabledExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
     ///
-    // end device
+    // end temp
     ///
 
     //get function pointers after creating instance of vulkan
