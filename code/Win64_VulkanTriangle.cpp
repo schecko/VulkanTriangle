@@ -13,6 +13,19 @@
 
 #if VALIDATION_LAYERS
 #include <vulkan/vk_layer.h>
+int validationLayerCount = 9;
+const char *validationLayerNames[] =
+{
+    "VK_LAYER_GOOGLE_threading",
+    "VK_LAYER_LUNARG_mem_tracker",
+    "VK_LAYER_LUNARG_object_tracker",
+    "VK_LAYER_LUNARG_draw_state",
+    "VK_LAYER_LUNARG_param_checker",
+    "VK_LAYER_LUNARG_swapchain",
+    "VK_LAYER_LUNARG_device_limits",
+    "VK_LAYER_LUNARG_image",
+    "VK_LAYER_GOOGLE_unique_objects",
+};
 #endif
 
 //function pointers
@@ -38,8 +51,25 @@ struct MainMemory
     bool running;
 
     VkInstance vkInstance;
-    VkPhysicalDevice vkPhysicalDevice;
+
+    VkSurfaceKHR surface;
+    VkColorSpaceKHR surfaceColorSpace;
+    VkFormat surfaceColorFormat;
+
+    VkPhysicalDevice physicalDevice;
     uint32_t renderingQueueFamilyIndex;
+    VkFormat supportedDepthFormat;
+    VkPhysicalDeviceFeatures deviceFeatures;
+    VkPhysicalDeviceMemoryProperties memoryProperties;
+
+    VkDevice logicalDevice;
+    VkQueue queue;
+
+    VkSemaphore presentComplete;
+    VkSemaphore renderComplete;
+
+    //TODO better name?
+    VkSubmitInfo submitInfo;
 
 
 };
@@ -173,20 +203,7 @@ VkInstance NewVkInstance()
     }
 #if(VALIDATION_LAYERS)
     //TODO figure out how to use them
-    int validationLayerCount = 9;
     instanceCreateInfo.enabledLayerCount = validationLayerCount;
-    const char *validationLayerNames[] =
-    {
-        "VK_LAYER_GOOGLE_threading",
-        "VK_LAYER_LUNARG_mem_tracker",
-        "VK_LAYER_LUNARG_object_tracker",
-        "VK_LAYER_LUNARG_draw_state",
-        "VK_LAYER_LUNARG_param_checker",
-        "VK_LAYER_LUNARG_swapchain",
-        "VK_LAYER_LUNARG_device_limits",
-        "VK_LAYER_LUNARG_image",
-        "VK_LAYER_GOOGLE_unique_objects",
-    };
     instanceCreateInfo.ppEnabledLayerNames = validationLayerNames;
 #endif
 
@@ -219,67 +236,152 @@ std::vector<VkPhysicalDevice> EnumeratePhysicalDevices(VkInstance vkInstance, ui
 }
 
 //from the physicaldevice as a param, returns a grphics queueFamily cabable of a rendering pipeline.
-uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice)
+uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice, VkSurfaceKHR surface)
 {
 
     uint32_t queueCount = 0;
-    uint32_t graphicsQueueIndex = 0;
+    uint32_t graphicsAndPresentingQueueIndex = 0;
+    VkBool32 supportsPresent;
     vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueCount, nullptr);
     Assert(queueCount > 0, "physical device has no available queues");
 
     std::vector<VkQueueFamilyProperties> queueProperties(queueCount);
     vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueCount, queueProperties.data());
 
-    for (; graphicsQueueIndex < queueCount; graphicsQueueIndex++)
+    for (; graphicsAndPresentingQueueIndex < queueCount; graphicsAndPresentingQueueIndex++)
     {
-        if (queueProperties[graphicsQueueIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        GetPhysicalDeviceSurfaceSupportKHR(vkPhysicalDevice, graphicsAndPresentingQueueIndex, surface, &supportsPresent);
+        if (queueProperties[graphicsAndPresentingQueueIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT && supportsPresent)
             break;
     }
 
-    Assert(graphicsQueueIndex < queueCount, "this gpu doesn't support graphics rendering.... what a useful gpu");
+    Assert(graphicsAndPresentingQueueIndex < queueCount, "this gpu doesn't support graphics rendering.... what a useful gpu");
 
-    return graphicsQueueIndex;
+    return graphicsAndPresentingQueueIndex;
 }
 
-//windows entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
-int main(int argv, char** argc)
+VkDevice NewLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t renderingQueueFamilyIndex)
 {
-    MainMemory* mainMemory = new MainMemory();
+    float queuePriorities[1] = { 0.0f };
+    VkDeviceQueueCreateInfo queueCreateInfo = {};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = renderingQueueFamilyIndex;
+    queueCreateInfo.queueCount = 1;
+    queueCreateInfo.pQueuePriorities = queuePriorities;
+
+    std::vector<const char*> enabledExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    VkDeviceCreateInfo deviceCreateInfo = {};
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.queueCreateInfoCount = 1;
+    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+    deviceCreateInfo.enabledExtensionCount = (uint32_t)enabledExtensions.size();
+    deviceCreateInfo.ppEnabledExtensionNames = enabledExtensions.data();
+#if VALIDATION_LAYERS
+    deviceCreateInfo.enabledLayerCount = validationLayerCount;
+    deviceCreateInfo.ppEnabledLayerNames = validationLayerNames;
+#endif
+
+    VkResult error;
+    VkDevice logicalDevice;
+    error = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &logicalDevice);
+
+    Assert(error == VK_SUCCESS, "could not create logical device");
+    return logicalDevice;
+}
+
+VkFormat GetSupportedDepthFormat(VkPhysicalDevice physicalDevice)
+{
+    VkFormat depthFormats[] =
+    {
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_D32_SFLOAT,
+        VK_FORMAT_D24_UNORM_S8_UINT,
+        VK_FORMAT_D16_UNORM_S8_UINT,
+        VK_FORMAT_D16_UNORM
+    };
+    VkFormat depthFormat;
+    bool found = false;
+    for (uint32_t i = 0; i < sizeof(depthFormats) / sizeof(VkFormat); i++)
+    {
+        VkFormatProperties formatProps;
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, depthFormats[i], &formatProps);
+        if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        {
+            depthFormat = depthFormats[i];
+            found = true;
+        }
+
+    }
+    Assert(found == true, "could not find a supported depth format");
+    return depthFormat;
+}
+
+VkSemaphore NewSemaphore(VkDevice logicalDevice)
+{
+    VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkSemaphore semaphore;
+    VkResult error = vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore);
+    Assert(error == VK_SUCCESS, "could not create semaphore");
+    return semaphore;
+}
+
+VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkInstance)
+{
+    VkResult error;
+    VkSurfaceKHR surface;
+    VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {};
+    surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    surfaceCreateInfo.hinstance = exeHandle;
+    surfaceCreateInfo.hwnd = windowHandle;
+    error = vkCreateWin32SurfaceKHR(vkInstance,
+                                    &surfaceCreateInfo,
+                                    nullptr,
+                                    &surface);
+
+    Assert(error == VK_SUCCESS, "could not create windows surface");
+
+    return surface;
+}
+
+void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
+                                   VkSurfaceKHR surface,
+                                   VkFormat* surfaceColorFormat,
+                                   VkColorSpaceKHR* surfaceColorSpace)
+{
+    uint32_t surfaceFormatCount;
+    VkResult error;
+    error = GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
+    Assert(error == VK_SUCCESS, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
+    Assert(surfaceFormatCount > 0, "surfaceformatcount is less than 1");
+
+    std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
+    error = GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice,
+            surface,
+            &surfaceFormatCount,
+            surfaceFormats.data());
+    Assert(error == VK_SUCCESS, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
+
+    if (surfaceFormatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
+    {
+        *surfaceColorFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    }
+    else
+    {
+        *surfaceColorFormat = surfaceFormats[0].format;
+    }
+    *surfaceColorSpace = surfaceFormats[0].colorSpace;
+}
+void Init(MainMemory* mainMemory)
+{
+
     mainMemory->running = true;
     mainMemory->consoleHandle = GetConsoleWindow();
     ShowWindow(mainMemory->consoleHandle, SW_HIDE);
 
     mainMemory->windowHandle = NewWindow(mainMemory);
     mainMemory->vkInstance = NewVkInstance();
-
-    uint32_t gpuCount;
-    std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(mainMemory->vkInstance, &gpuCount);
-    mainMemory->vkPhysicalDevice = physicalDevices[0];
-
-    //see what the gpu is capable of
-    //NOTE not actually used in other code
-    VkPhysicalDeviceFeatures deviceFeatures = {};
-    vkGetPhysicalDeviceFeatures(mainMemory->vkPhysicalDevice, &deviceFeatures);
-
-    mainMemory->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(mainMemory->vkPhysicalDevice);
-
-    ///
-    //temp area in prep for function creation
-    ///
-
-    //currently in VkResult VulkanExampleBase::createDevice(VkDeviceQueueCreateInfo requestedQueues, bool enableValidation)
-    float queuePriorities[1] = { 0.0f };
-    VkDeviceQueueCreateInfo queueCreateInfo = {};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = mainMemory->renderingQueueFamilyIndex;
-    queueCreateInfo.queueCount = 1;
-    queueCreateInfo.pQueuePriorities = queuePriorities;
-
-    std::vector<const char*> enabledExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-
-    ///
-    // end temp
-    ///
+    mainMemory->surface = NewSurface(mainMemory->windowHandle, mainMemory->exeHandle, mainMemory->vkInstance);
 
     //get function pointers after creating instance of vulkan
     GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceSupportKHR);
@@ -287,61 +389,79 @@ int main(int argv, char** argc)
     GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceFormatsKHR);
     GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfacePresentModesKHR);
 
+    uint32_t gpuCount;
+    std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(mainMemory->vkInstance, &gpuCount);
+    mainMemory->physicalDevice = physicalDevices[0];
+
+    //see what the gpu is capable of
+    //NOTE not actually used in other code
+    vkGetPhysicalDeviceFeatures(mainMemory->physicalDevice, &mainMemory->deviceFeatures);
+
+    vkGetPhysicalDeviceMemoryProperties(mainMemory->physicalDevice, &mainMemory->memoryProperties);
+
+    mainMemory->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(mainMemory->physicalDevice, mainMemory->surface);
+    mainMemory->logicalDevice = NewLogicalDevice(mainMemory->physicalDevice, mainMemory->renderingQueueFamilyIndex);
+    vkGetDeviceQueue(mainMemory->logicalDevice, mainMemory->renderingQueueFamilyIndex, 0, &mainMemory->queue);
+    mainMemory->supportedDepthFormat = GetSupportedDepthFormat(mainMemory->physicalDevice);
+
 
     //after logical device creation we can retrieve function pointers associated with it
-    //GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, CreateSwapchainKHR);
-    //GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, DestroySwapchainKHR);
-    //GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, GetSwapchainImagesKHR);
-    //GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, AcquireNextImageKHR);
-    //GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, QueuePresentKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, CreateSwapchainKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, DestroySwapchainKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, GetSwapchainImagesKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, AcquireNextImageKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, QueuePresentKHR);
 
 
+    mainMemory->presentComplete = NewSemaphore(mainMemory->logicalDevice);
+    mainMemory->renderComplete = NewSemaphore(mainMemory->logicalDevice);
+
+    mainMemory->submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    mainMemory->submitInfo.pWaitDstStageMask = (VkPipelineStageFlags*)VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    mainMemory->submitInfo.waitSemaphoreCount = 1;
+    mainMemory->submitInfo.pWaitSemaphores = &mainMemory->presentComplete;
+    mainMemory->submitInfo.signalSemaphoreCount = 1;
+    mainMemory->submitInfo.pSignalSemaphores = &mainMemory->renderComplete;
 
 
+    GetSurfaceColorSpaceAndFormat(mainMemory->physicalDevice,
+                                  mainMemory->surface,
+                                  &mainMemory->surfaceColorFormat,
+                                  &mainMemory->surfaceColorSpace);
+}
 
-    ///
-    //MAIN LOOP
-    ///
-    while (mainMemory->running)
+void UpdateAndRender(MainMemory* mainMemory)
+{
+
+}
+
+void PollEvents(HWND windowHandle)
+{
+    MSG msg;
+    while (PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE))
     {
-        MSG msg;
-        while (PeekMessage(&msg, mainMemory->windowHandle, 0, 0, PM_REMOVE))
-        {
-
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-
-        } //message processing
-
-
-
-
-
-
-
-
-
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
 
     }
+}
 
+void Quit(MainMemory* mainMemory)
+{
+    DestroyWindow(mainMemory->windowHandle);
+}
+//windows entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
+int main(int argv, char** argc)
+{
 
+    MainMemory* mainMemory = new MainMemory();
+    Init(mainMemory);
+    while (mainMemory->running)
+    {
+        PollEvents(mainMemory->windowHandle);
+        UpdateAndRender(mainMemory);
+    }
+    Quit(mainMemory);
     return 0;
 }
 
-//VkSurfaceKHR NewVkSurface(HWND windowHandle, VkInstance vkInstance)
-//{
-//	VkResult error;
-//	VkSurfaceKHR surface;
-//	VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {};
-//	surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-//	surfaceCreateInfo.hinstance = GetModuleHandle(nullptr);
-//	surfaceCreateInfo.hwnd = windowHandle;
-//	error = vkCreateWin32SurfaceKHR(vkInstance,
-//		&surfaceCreateInfo,
-//		nullptr,
-//		&surface);
-//
-//	Assert(error == VK_SUCCESS, "could not create windows surface");
-//
-//	return surface;
-//}
