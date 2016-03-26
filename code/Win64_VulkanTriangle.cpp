@@ -64,6 +64,7 @@ struct MainMemory
 
     VkDevice logicalDevice;
     VkQueue queue;
+    VkCommandPool cmdPool;
 
     VkSemaphore presentComplete;
     VkSemaphore renderComplete;
@@ -87,7 +88,7 @@ struct MainMemory
 	Assert(function != nullptr, "could not find function "#function);				\
 }
 
-//bare bones wndproc for now
+//handle the windows messages
 LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 {
 
@@ -372,6 +373,37 @@ void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
     }
     *surfaceColorSpace = surfaceFormats[0].colorSpace;
 }
+
+VkCommandPool NewCommandPool(uint32_t renderingAndPresentingIndex, VkDevice logicalDevice)
+{
+    VkResult error;
+    VkCommandPool pool;
+    VkCommandPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = renderingAndPresentingIndex;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    error = vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &pool);
+    Assert(error == VK_SUCCESS, "could not create command pool.");
+    return pool;
+}
+
+VkCommandBuffer NewSetupBuffer(VkDevice logicalDevice, VkCommandPool cmdPool)
+{
+    VkCommandBuffer setupBuffer;
+    VkResult error;
+    VkCommandBufferAllocateInfo bufferAllocInfo = {};
+    bufferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    bufferAllocInfo.commandPool = cmdPool;
+    bufferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    bufferAllocInfo.commandBufferCount = 1;
+    error = vkAllocateCommandBuffers(logicalDevice, &bufferAllocInfo, &setupBuffer);
+    Assert(error == VK_SUCCESS, "could not create setup command buffer");
+    VkCommandBufferBeginInfo setupBeginInfo = {};
+    setupBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //error = vkBeginCommandBuffer(setup);
+
+}
+
 void Init(MainMemory* mainMemory)
 {
 
@@ -428,6 +460,10 @@ void Init(MainMemory* mainMemory)
                                   mainMemory->surface,
                                   &mainMemory->surfaceColorFormat,
                                   &mainMemory->surfaceColorSpace);
+
+    mainMemory->cmdPool = NewCommandPool(mainMemory->renderingQueueFamilyIndex, mainMemory->logicalDevice);
+
+
 }
 
 void UpdateAndRender(MainMemory* mainMemory)
@@ -462,6 +498,7 @@ int main(int argv, char** argc)
         UpdateAndRender(mainMemory);
     }
     Quit(mainMemory);
+    delete mainMemory;
     return 0;
 }
 
