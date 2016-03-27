@@ -10,6 +10,7 @@
 #include <vector>
 
 #define VALIDATION_LAYERS false
+#define DEBUGGING true
 
 #if VALIDATION_LAYERS
 #include <vulkan/vk_layer.h>
@@ -40,13 +41,19 @@ PFN_vkAcquireNextImageKHR AcquireNextImageKHR = nullptr;
 PFN_vkQueuePresentKHR QueuePresentKHR = nullptr;
 
 const char* EXE_NAME = "VulkanTriangle";
-
-//main struct, pretty much holds everything due to the simple nature of this program
+struct SwapChainBuffer
+{
+    VkImage image;
+    VkImageView view;
+};
+//main struct, pretty much holds everything
 struct MainMemory
 {
     HWND consoleHandle;
     HWND windowHandle;
     HINSTANCE exeHandle;
+
+    uint32_t clientWidth, clientHeight;
 
     bool running;
 
@@ -55,6 +62,9 @@ struct MainMemory
     VkSurfaceKHR surface;
     VkColorSpaceKHR surfaceColorSpace;
     VkFormat surfaceColorFormat;
+    uint32_t surfaceImageCount;
+    std::vector<VkImage> surfaceImages;
+    std::vector<SwapChainBuffer> surfaceBuffers;
 
     VkPhysicalDevice physicalDevice;
     uint32_t renderingQueueFamilyIndex;
@@ -71,6 +81,8 @@ struct MainMemory
 
     //TODO better name?
     VkSubmitInfo submitInfo;
+
+    VkCommandBuffer setupCommandBuffer;
 
 
 };
@@ -115,9 +127,11 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
     return 0;
 }
 
-//assert the test is true, if test is false the console is moved to the front, the message is printed out and execution halts using std::cin
+//assert the test is true, if test is false the console is moved to the focus,
+//the message is printed out and execution halts using std::cin rather than abort() or nullptr errors
 void Assert(bool test, std::string message)
 {
+#if DEBUGGING == true
     char x;
     if (test == false)
     {
@@ -129,13 +143,15 @@ void Assert(bool test, std::string message)
         std::cin >> x;
         ShowWindow(consoleHandle, SW_HIDE);
     }
+#endif
 }
 
 
-//create a windows window, pass a pointer to a struct required in the wndproc function.
+//create a windows window, pass a pointer to a struct for input events
 //returns a handle to the created window.
-HWND NewWindow(void* pointer)
+HWND NewWindow(void* pointer, uint32_t clientWidth, uint32_t clientHeight)
 {
+
 
     WNDCLASS wc = {};
 
@@ -153,13 +169,17 @@ HWND NewWindow(void* pointer)
     Assert(result != 0, "could not register windowclass");
 
 
+    //TODO calculate windowrect from clientrect
+    uint32_t windowWidth = clientWidth;
+    uint32_t windowHeight = clientHeight;
+
     HWND windowHandle = CreateWindow(EXE_NAME,
                                      EXE_NAME,
                                      WS_OVERLAPPEDWINDOW,
                                      CW_USEDEFAULT,
                                      CW_USEDEFAULT,
-                                     CW_USEDEFAULT,
-                                     CW_USEDEFAULT,
+                                     windowWidth,
+                                     windowHeight,
                                      nullptr,
                                      nullptr,
                                      wc.hInstance,
@@ -172,7 +192,8 @@ HWND NewWindow(void* pointer)
     return windowHandle;
 }
 
-//create the vulkan instance. includes some debug code but its fairly broken....
+//create the vulkan instance.
+//TODO learn the validation layers
 //returns the created instance of vulkan
 VkInstance NewVkInstance()
 {
@@ -214,9 +235,6 @@ VkInstance NewVkInstance()
 
     return vkInstance;
 }
-
-
-
 
 
 //fill the gpuCount param with the number of physical devices available to the program, and return a pointer to a vector containing the physical devices
@@ -387,7 +405,7 @@ VkCommandPool NewCommandPool(uint32_t renderingAndPresentingIndex, VkDevice logi
     return pool;
 }
 
-VkCommandBuffer NewSetupBuffer(VkDevice logicalDevice, VkCommandPool cmdPool)
+VkCommandBuffer NewSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool)
 {
     VkCommandBuffer setupBuffer;
     VkResult error;
@@ -396,11 +414,134 @@ VkCommandBuffer NewSetupBuffer(VkDevice logicalDevice, VkCommandPool cmdPool)
     bufferAllocInfo.commandPool = cmdPool;
     bufferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     bufferAllocInfo.commandBufferCount = 1;
+
+
     error = vkAllocateCommandBuffers(logicalDevice, &bufferAllocInfo, &setupBuffer);
     Assert(error == VK_SUCCESS, "could not create setup command buffer");
     VkCommandBufferBeginInfo setupBeginInfo = {};
     setupBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    //error = vkBeginCommandBuffer(setup);
+    error = vkBeginCommandBuffer(setupBuffer, &setupBeginInfo);
+    Assert(error == VK_SUCCESS, "could not begin setup command buffer.");
+    return setupBuffer;
+
+}
+
+//TODO this function is a little rediculous, simplify into smaller functions or something?
+void InitSwapChain(
+    /*VkDevice logicalDevice,
+      VkPhysicalDevice physicalDevice,
+      VkSurfaceKHR surface,
+      VkFormat imageFormat,
+      VkColorSpaceKHR colorSpace,
+      */
+    MainMemory* mainMemory,
+    uint32_t* width,
+    uint32_t* height)
+{
+    //TODO parts of this function could be moved to other functions to improve the flow of initialization?
+    //specifically move the use of the function extensions into a single function?
+    VkResult error;
+    VkSwapchainKHR swapChain;
+
+
+    VkSurfaceCapabilitiesKHR surfaceCaps;
+    error = GetPhysicalDeviceSurfaceCapabilitiesKHR(mainMemory->physicalDevice,
+            mainMemory->surface,
+            &surfaceCaps);
+    Assert(error == VK_SUCCESS, "could not get surface capabilities, the function is probably null?");
+
+    uint32_t presentModeCount;
+    error = GetPhysicalDeviceSurfacePresentModesKHR(mainMemory->physicalDevice,
+            mainMemory->surface,
+            &presentModeCount,
+            nullptr);
+    Assert(error == VK_SUCCESS, "could not get surface present modes");
+    Assert(presentModeCount > 0, "present mode count is zero!!");
+
+    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+
+
+    error = GetPhysicalDeviceSurfacePresentModesKHR(mainMemory->physicalDevice,
+            mainMemory->surface,
+            &presentModeCount,
+            presentModes.data());
+    Assert(error == VK_SUCCESS, "could not get the present Modes");
+
+    VkExtent2D swapChainExtent = {};
+    //width and height are either both -1, or both not -1
+    if (surfaceCaps.currentExtent.width == -1)
+    {
+        swapChainExtent.width = *width;
+        swapChainExtent.height = *height;
+    }
+    else
+    {
+        swapChainExtent = surfaceCaps.currentExtent;
+        *width = surfaceCaps.currentExtent.width;
+        *height = surfaceCaps.currentExtent.height;
+    }
+
+    VkPresentModeKHR swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+    for (size_t i = 0; i < presentModeCount; i++)
+    {
+        if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
+        {
+            swapChainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+            break;
+        }
+        if (swapChainPresentMode != VK_PRESENT_MODE_MAILBOX_KHR &&
+                presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
+        {
+            swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        }
+    }
+
+    //determine the number of images
+    //TODO what is this???
+    uint32_t desiredNumberOfSwapChainImages = surfaceCaps.minImageCount + 1;
+    if (surfaceCaps.maxImageCount > 0 && desiredNumberOfSwapChainImages > surfaceCaps.maxImageCount)
+    {
+        desiredNumberOfSwapChainImages = surfaceCaps.maxImageCount;
+    }
+    VkSurfaceTransformFlagsKHR preTransform;
+    if (surfaceCaps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
+    {
+        preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    }
+    else
+    {
+        preTransform = surfaceCaps.currentTransform;
+    }
+
+    VkSwapchainCreateInfoKHR swapchainCI = {};
+    swapchainCI.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchainCI.surface = mainMemory->surface;
+    swapchainCI.minImageCount = desiredNumberOfSwapChainImages;
+    swapchainCI.imageFormat = mainMemory->surfaceColorFormat;
+    swapchainCI.imageColorSpace = mainMemory->surfaceColorSpace;
+    swapchainCI.imageExtent = {swapChainExtent.width, swapChainExtent.height};
+    swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchainCI.preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform;
+    swapchainCI.imageArrayLayers = 1;
+    swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchainCI.presentMode = swapChainPresentMode;
+    //TODO do I ever have an old swapchain and need to create a new one?
+    //swapchainCI.oldSwapchain = oldSwapChain;
+    swapchainCI.clipped = VK_TRUE;
+    swapchainCI.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+
+    error = CreateSwapchainKHR(mainMemory->logicalDevice, &swapchainCI, nullptr, &swapChain);
+    Assert(error == VK_SUCCESS, "could not create a swapchain");
+
+    error = GetSwapchainImagesKHR(mainMemory->logicalDevice, swapChain, &mainMemory->surfaceImageCount, nullptr);
+    Assert(error == VK_SUCCESS, "could not get surface image count");
+    mainMemory->surfaceImages.resize(mainMemory->surfaceImageCount);
+    mainMemory->surfaceBuffers.resize(mainMemory->surfaceImageCount);
+    error = GetSwapchainImagesKHR(mainMemory->logicalDevice, swapChain, &mainMemory->surfaceImageCount, mainMemory->surfaceImages.data());
+    Assert(error == VK_SUCCESS, "could not fill surface images vector");
+
+
+
 
 }
 
@@ -410,8 +551,10 @@ void Init(MainMemory* mainMemory)
     mainMemory->running = true;
     mainMemory->consoleHandle = GetConsoleWindow();
     ShowWindow(mainMemory->consoleHandle, SW_HIDE);
+    mainMemory->clientWidth = 1200;
+    mainMemory->clientHeight = 800;
 
-    mainMemory->windowHandle = NewWindow(mainMemory);
+    mainMemory->windowHandle = NewWindow(mainMemory, mainMemory->clientWidth, mainMemory->clientHeight);
     mainMemory->vkInstance = NewVkInstance();
     mainMemory->surface = NewSurface(mainMemory->windowHandle, mainMemory->exeHandle, mainMemory->vkInstance);
 
@@ -462,8 +605,10 @@ void Init(MainMemory* mainMemory)
                                   &mainMemory->surfaceColorSpace);
 
     mainMemory->cmdPool = NewCommandPool(mainMemory->renderingQueueFamilyIndex, mainMemory->logicalDevice);
+    mainMemory->setupCommandBuffer = NewSetupCommandBuffer(mainMemory->logicalDevice,
+                                     mainMemory->cmdPool);
 
-
+    InitSwapChain(mainMemory, &mainMemory->clientWidth, &mainMemory->clientHeight);
 }
 
 void UpdateAndRender(MainMemory* mainMemory)
