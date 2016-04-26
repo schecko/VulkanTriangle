@@ -9,24 +9,11 @@
 #include <string>
 #include <vector>
 
-#define VALIDATION_LAYERS false
+#define VALIDATION_LAYERS true
 #define DEBUGGING true
 
 #if VALIDATION_LAYERS
 #include <vulkan/vk_layer.h>
-int validationLayerCount = 9;
-const char *validationLayerNames[] =
-{
-    "VK_LAYER_GOOGLE_threading",
-    "VK_LAYER_LUNARG_mem_tracker",
-    "VK_LAYER_LUNARG_object_tracker",
-    "VK_LAYER_LUNARG_draw_state",
-    "VK_LAYER_LUNARG_param_checker",
-    "VK_LAYER_LUNARG_swapchain",
-    "VK_LAYER_LUNARG_device_limits",
-    "VK_LAYER_LUNARG_image",
-    "VK_LAYER_GOOGLE_unique_objects",
-};
 #endif
 
 //function pointers
@@ -39,8 +26,12 @@ PFN_vkDestroySwapchainKHR DestroySwapchainKHR = nullptr;
 PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR = nullptr;
 PFN_vkAcquireNextImageKHR AcquireNextImageKHR = nullptr;
 PFN_vkQueuePresentKHR QueuePresentKHR = nullptr;
+PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT = nullptr;
+PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallbackEXT = nullptr;
+
 
 const char* EXE_NAME = "VulkanTriangle";
+
 struct SwapChainBuffer
 {
     VkImage image;
@@ -71,6 +62,12 @@ struct MainMemory
     VkFormat supportedDepthFormat;
     VkPhysicalDeviceFeatures deviceFeatures;
     VkPhysicalDeviceMemoryProperties memoryProperties;
+
+    std::vector<const char*> instanceLayerList;
+    std::vector<const char*> instanceExtList;
+    std::vector<const char*> deviceLayerList;
+    std::vector<const char*> deviceExtList;
+    VkDebugReportCallbackEXT debugReport;
 
     VkDevice logicalDevice;
     VkQueue queue;
@@ -195,8 +192,17 @@ HWND NewWindow(void* pointer, uint32_t clientWidth, uint32_t clientHeight)
 //create the vulkan instance.
 //TODO learn the validation layers
 //returns the created instance of vulkan
-VkInstance NewVkInstance()
+VkInstance NewVkInstance(std::vector<const char*> instanceLayers, std::vector<const char*> instanceExts)
 {
+
+    instanceExts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    instanceExts.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#if VALIDATION_LAYERS
+    instanceExts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#endif
+
+
+
     VkResult error;
     VkInstance vkInstance;
 
@@ -204,30 +210,22 @@ VkInstance NewVkInstance()
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = EXE_NAME;
     appInfo.pEngineName = EXE_NAME;
-    appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 2);
-
-    std::vector<const char*> extensions = { VK_KHR_SURFACE_EXTENSION_NAME };
-    extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-
+    appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 8);
+	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 8);
 
     VkInstanceCreateInfo instanceCreateInfo = {};
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceCreateInfo.pApplicationInfo = &appInfo;
 
-    if (extensions.size() > 0)
-    {
-
-#if VALIDATION_LAYERS
-        extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-#endif
-        instanceCreateInfo.enabledExtensionCount = (uint32_t)extensions.size();
-        instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
-    }
 #if(VALIDATION_LAYERS)
-    //TODO figure out how to use them
-    instanceCreateInfo.enabledLayerCount = validationLayerCount;
-    instanceCreateInfo.ppEnabledLayerNames = validationLayerNames;
+    instanceCreateInfo.enabledLayerCount = (uint32_t)instanceLayers.size();
+    instanceCreateInfo.ppEnabledLayerNames = instanceLayers.data();
 #endif
+
+    instanceCreateInfo.enabledExtensionCount = (uint32_t)instanceExts.size();
+    instanceCreateInfo.ppEnabledExtensionNames = instanceExts.data();
+
+
 
     error = vkCreateInstance(&instanceCreateInfo, nullptr, &vkInstance);
 
@@ -279,8 +277,15 @@ uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice, VkSurfa
     return graphicsAndPresentingQueueIndex;
 }
 
-VkDevice NewLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t renderingQueueFamilyIndex)
+VkDevice NewLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t renderingQueueFamilyIndex, std::vector<const char*> deviceLayers, std::vector<const char*> deviceExts)
 {
+	//deviceExts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+	//deviceExts.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#if VALIDATION_LAYERS
+	//deviceExts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#endif
+    deviceExts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
     float queuePriorities[1] = { 0.0f };
     VkDeviceQueueCreateInfo queueCreateInfo = {};
     queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -288,16 +293,16 @@ VkDevice NewLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t renderingQue
     queueCreateInfo.queueCount = 1;
     queueCreateInfo.pQueuePriorities = queuePriorities;
 
-    std::vector<const char*> enabledExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+
     VkDeviceCreateInfo deviceCreateInfo = {};
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceCreateInfo.queueCreateInfoCount = 1;
     deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-    deviceCreateInfo.enabledExtensionCount = (uint32_t)enabledExtensions.size();
-    deviceCreateInfo.ppEnabledExtensionNames = enabledExtensions.data();
+    deviceCreateInfo.enabledExtensionCount = (uint32_t)deviceExts.size();
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExts.data();
 #if VALIDATION_LAYERS
-    deviceCreateInfo.enabledLayerCount = validationLayerCount;
-    deviceCreateInfo.ppEnabledLayerNames = validationLayerNames;
+    deviceCreateInfo.enabledLayerCount = (uint32_t)deviceLayers.size();
+    deviceCreateInfo.ppEnabledLayerNames = deviceLayers.data();
 #endif
 
     VkResult error;
@@ -328,6 +333,7 @@ VkFormat GetSupportedDepthFormat(VkPhysicalDevice physicalDevice)
         {
             depthFormat = depthFormats[i];
             found = true;
+            break;
         }
 
     }
@@ -424,6 +430,119 @@ VkCommandBuffer NewSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdP
     Assert(error == VK_SUCCESS, "could not begin setup command buffer.");
     return setupBuffer;
 
+}
+
+void SetImageLayout( VkCommandBuffer cmdBuffer,
+                     VkImage image,
+                     VkImageAspectFlags aspectMask,
+                     VkImageLayout oldImageLayout,
+                     VkImageLayout newImageLayout)
+{
+    VkImageSubresourceRange subresourceRange = {};
+    subresourceRange.aspectMask = aspectMask;
+    subresourceRange.baseMipLevel = 0;
+    subresourceRange.levelCount = 1;
+    subresourceRange.layerCount = 1;
+
+    VkImageMemoryBarrier imageMemoryBarrier = {};
+    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+    imageMemoryBarrier.oldLayout = oldImageLayout;
+    imageMemoryBarrier.newLayout = newImageLayout;
+    imageMemoryBarrier.image = image;
+    imageMemoryBarrier.subresourceRange = subresourceRange;
+
+    // Undefined layout
+    // Only allowed as initial layout!
+    // Make sure any writes to the image have been finished
+    if (oldImageLayout == VK_IMAGE_LAYOUT_PREINITIALIZED)
+    {
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+    }
+
+    // Old layout is color attachment
+    // Make sure any writes to the color buffer have been finished
+    if (oldImageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    {
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    }
+
+    // Old layout is depth/stencil attachment
+    // Make sure any writes to the depth/stencil buffer have been finished
+    if (oldImageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
+
+    // Old layout is transfer source
+    // Make sure any reads from the image have been finished
+    if (oldImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    {
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    }
+
+    // Old layout is shader read (sampler, input attachment)
+    // Make sure any shader reads from the image have been finished
+    if (oldImageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+
+    // Target layouts (new)
+
+    // New layout is transfer destination (copy, blit)
+    // Make sure any copyies to the image have been finished
+    if (newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    }
+
+    // New layout is transfer source (copy, blit)
+    // Make sure any reads from and writes to the image have been finished
+    if (newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    {
+        imageMemoryBarrier.srcAccessMask = imageMemoryBarrier.srcAccessMask | VK_ACCESS_TRANSFER_READ_BIT;
+        imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    }
+
+    // New layout is color attachment
+    // Make sure any writes to the color buffer hav been finished
+    if (newImageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    {
+        imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    }
+
+    // New layout is depth attachment
+    // Make sure any writes to depth/stencil buffer have been finished
+    if (newImageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        imageMemoryBarrier.dstAccessMask = imageMemoryBarrier.dstAccessMask | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
+
+    // New layout is shader read (sampler, input attachment)
+    // Make sure any writes to the image have been finished
+    if (newImageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+        imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+
+    // Put barrier on top
+    VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+    // Put barrier inside setup command buffer
+    vkCmdPipelineBarrier(
+        cmdBuffer,
+        srcStageFlags,
+        destStageFlags,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &imageMemoryBarrier);
 }
 
 //TODO this function is a little rediculous, simplify into smaller functions or something?
@@ -540,10 +659,109 @@ void InitSwapChain(
     error = GetSwapchainImagesKHR(mainMemory->logicalDevice, swapChain, &mainMemory->surfaceImageCount, mainMemory->surfaceImages.data());
     Assert(error == VK_SUCCESS, "could not fill surface images vector");
 
+    for (uint32_t i = 0; i < mainMemory->surfaceImageCount; i++)
+    {
+        VkImageViewCreateInfo colorAttachmentView = {};
+        colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        colorAttachmentView.format = mainMemory->surfaceColorFormat;
+        colorAttachmentView.components = {
+            VK_COMPONENT_SWIZZLE_R,
+            VK_COMPONENT_SWIZZLE_G,
+            VK_COMPONENT_SWIZZLE_B,
+            VK_COMPONENT_SWIZZLE_A
+        };
+        colorAttachmentView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        colorAttachmentView.subresourceRange.baseMipLevel = 0;
+        colorAttachmentView.subresourceRange.levelCount = 1;
+        colorAttachmentView.subresourceRange.baseArrayLayer = 0;
+        colorAttachmentView.subresourceRange.layerCount = 1;
+        colorAttachmentView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        colorAttachmentView.flags = 0;
+
+        mainMemory->surfaceBuffers[i].image = mainMemory->surfaceImages[i];
+
+        SetImageLayout(mainMemory->setupCommandBuffer,
+                       mainMemory->surfaceBuffers[i].image,
+                       VK_IMAGE_ASPECT_COLOR_BIT,
+                       VK_IMAGE_LAYOUT_UNDEFINED,
+                       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+        colorAttachmentView.image = mainMemory->surfaceBuffers[i].image;
+        error = vkCreateImageView(mainMemory->logicalDevice, &colorAttachmentView, nullptr, &mainMemory->surfaceBuffers[i].view);
+        Assert(error == VK_SUCCESS, "could not create image view");
+    }
 
 
 
 }
+
+std::vector<VkLayerProperties> GetInstalledVkLayers()
+{
+    uint32_t layerCount = 0;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+    std::vector<VkLayerProperties> layerProps(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, layerProps.data());
+
+    return layerProps;
+
+}
+
+std::vector<VkLayerProperties> GetInstalledVkLayers(VkPhysicalDevice physicalDevice)
+{
+    uint32_t layerCount = 0;
+
+    vkEnumerateDeviceLayerProperties(physicalDevice, &layerCount, nullptr);
+    std::vector<VkLayerProperties> layerProps(layerCount);
+    vkEnumerateDeviceLayerProperties(physicalDevice, &layerCount, layerProps.data());
+
+    return layerProps;
+}
+
+#if VALIDATION_LAYERS
+VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
+        VkDebugReportObjectTypeEXT objType,
+        uint64_t srcObj,
+        size_t location,
+        int32_t msgCode,
+        const char* layerPrefix,
+        const char* msg,
+        void* data)
+{
+    std::string reportMessage;
+    if(flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
+    {
+        reportMessage += "DEBUG: ";
+
+    }
+    if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
+    {
+        reportMessage += "WARNING: ";
+
+    }
+    if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
+    {
+        reportMessage += "PERFORMANCE WARNING: ";
+    }
+    if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
+    {
+        reportMessage += "ERROR: ";
+
+    }
+    if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
+    {
+
+        reportMessage += "INFORMATION: ";
+    }
+
+    reportMessage += "@[";
+    reportMessage += layerPrefix;
+    reportMessage += "] ";
+    reportMessage += msg;
+    std::cout << reportMessage.c_str() << std::endl;
+    return false;
+
+}
+#endif
 
 void Init(MainMemory* mainMemory)
 {
@@ -555,7 +773,18 @@ void Init(MainMemory* mainMemory)
     mainMemory->clientHeight = 800;
 
     mainMemory->windowHandle = NewWindow(mainMemory, mainMemory->clientWidth, mainMemory->clientHeight);
-    mainMemory->vkInstance = NewVkInstance();
+
+#if VALIDATION_LAYERS
+	std::vector<VkLayerProperties> layerProps = GetInstalledVkLayers();
+	for (uint32_t i = 0; i < layerProps.size(); i++)
+	{
+		mainMemory->instanceLayerList.push_back(layerProps[i].layerName);
+
+	}
+
+#endif
+
+    mainMemory->vkInstance = NewVkInstance(mainMemory->instanceLayerList, mainMemory->instanceExtList);
     mainMemory->surface = NewSurface(mainMemory->windowHandle, mainMemory->exeHandle, mainMemory->vkInstance);
 
     //get function pointers after creating instance of vulkan
@@ -563,6 +792,23 @@ void Init(MainMemory* mainMemory)
     GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceCapabilitiesKHR);
     GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceFormatsKHR);
     GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfacePresentModesKHR);
+
+#if VALIDATION_LAYERS
+    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, CreateDebugReportCallbackEXT);
+    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, DestroyDebugReportCallbackEXT);
+
+    VkDebugReportCallbackCreateInfoEXT debugCreateInfo = {};
+    debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
+    debugCreateInfo.pfnCallback = VkDebugCallback;
+    debugCreateInfo.flags = VK_DEBUG_REPORT_INFORMATION_BIT_EXT |
+                            VK_DEBUG_REPORT_WARNING_BIT_EXT |
+                            VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
+                            VK_DEBUG_REPORT_ERROR_BIT_EXT |
+                            VK_DEBUG_REPORT_DEBUG_BIT_EXT;
+    CreateDebugReportCallbackEXT(mainMemory->vkInstance, &debugCreateInfo, nullptr, &mainMemory->debugReport);
+
+#endif
+
 
     uint32_t gpuCount;
     std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(mainMemory->vkInstance, &gpuCount);
@@ -575,7 +821,16 @@ void Init(MainMemory* mainMemory)
     vkGetPhysicalDeviceMemoryProperties(mainMemory->physicalDevice, &mainMemory->memoryProperties);
 
     mainMemory->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(mainMemory->physicalDevice, mainMemory->surface);
-    mainMemory->logicalDevice = NewLogicalDevice(mainMemory->physicalDevice, mainMemory->renderingQueueFamilyIndex);
+
+#if VALIDATION_LAYERS
+    std::vector<VkLayerProperties> layerPropsDevice = GetInstalledVkLayers(mainMemory->physicalDevice);
+    for (uint32_t i = 0; i < layerPropsDevice.size(); i++)
+    {
+        mainMemory->deviceLayerList.push_back(layerPropsDevice[i].layerName);
+
+    }
+#endif
+    mainMemory->logicalDevice = NewLogicalDevice(mainMemory->physicalDevice, mainMemory->renderingQueueFamilyIndex, mainMemory->deviceLayerList, mainMemory->deviceExtList);
     vkGetDeviceQueue(mainMemory->logicalDevice, mainMemory->renderingQueueFamilyIndex, 0, &mainMemory->queue);
     mainMemory->supportedDepthFormat = GetSupportedDepthFormat(mainMemory->physicalDevice);
 
@@ -608,6 +863,8 @@ void Init(MainMemory* mainMemory)
     mainMemory->setupCommandBuffer = NewSetupCommandBuffer(mainMemory->logicalDevice,
                                      mainMemory->cmdPool);
 
+
+
     InitSwapChain(mainMemory, &mainMemory->clientWidth, &mainMemory->clientHeight);
 }
 
@@ -630,8 +887,12 @@ void PollEvents(HWND windowHandle)
 void Quit(MainMemory* mainMemory)
 {
     DestroyWindow(mainMemory->windowHandle);
+#if VALIDATION_LAYERS
+    DestroyDebugReportCallbackEXT(mainMemory->vkInstance, mainMemory->debugReport, nullptr);
+#endif
 }
-//windows entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
+
+//app entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
 int main(int argv, char** argc)
 {
 
