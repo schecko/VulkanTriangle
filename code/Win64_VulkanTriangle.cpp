@@ -37,6 +37,12 @@ struct SwapChainBuffer
     VkImage image;
     VkImageView view;
 };
+struct DepthStencil
+{
+	VkImage image;
+	VkDeviceMemory mem;
+	VkImageView view;
+};
 //main struct, pretty much holds everything
 struct MainMemory
 {
@@ -80,7 +86,11 @@ struct MainMemory
     VkSubmitInfo submitInfo;
 
     VkCommandBuffer setupCommandBuffer;
+	std::vector<VkCommandBuffer> drawCmdBuffers;
+	VkCommandBuffer prePresentCmdBuffer;
+	VkCommandBuffer	postPresentCmdBuffer;
 
+	DepthStencil depthStencil;
 
 };
 
@@ -763,12 +773,113 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 }
 #endif
 
+void CreateCommandBuffers(VkDevice logicalDevice, 
+	std::vector<VkCommandBuffer> drawCmdBuffers, 
+	VkCommandBuffer* prePresentCmdBuffer, 
+	VkCommandBuffer* postPresentCmdBuffer,  
+	uint32_t swapchainImageCount, 
+	VkCommandPool cmdPool)
+{
+	drawCmdBuffers.resize(swapchainImageCount);
+
+	VkCommandBufferAllocateInfo cmdAllocInfo = {};
+	cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdAllocInfo.commandPool = cmdPool;
+	cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdAllocInfo.commandBufferCount = swapchainImageCount;
+
+	VkResult error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, drawCmdBuffers.data());
+	Assert(error == VK_SUCCESS, "could not create drawing command buffers");
+	
+	//TODO create a move general command buffer creation function?
+	cmdAllocInfo.commandBufferCount = 1;
+	error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, prePresentCmdBuffer);
+	Assert(error == VK_SUCCESS, "could not create prepresent command buffers");
+
+	error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, postPresentCmdBuffer);
+	Assert(error == VK_SUCCESS, "could not create post present command buffers");
+
+}
+
+void GetMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t typeBits, VkFlags properties, uint32_t* typeIndex)
+{
+	for (uint32_t i = 0; i < 32; i++)
+	{
+		if(((typeBits & 1) == 1) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties))
+		{
+			*typeIndex = i;
+			break;
+		}
+		typeBits >>= 1;
+	}
+
+}
+
+void setupDepthStencil(VkDevice logicalDevice, 
+	DepthStencil* depthStencil, 
+	VkFormat depthFormat, 
+	uint32_t width, 
+	uint32_t height, 
+	VkPhysicalDeviceMemoryProperties memoryProperties,
+	VkCommandBuffer setupCmdBuffer)
+{
+	VkImageCreateInfo image = {};
+	image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	image.imageType = VK_IMAGE_TYPE_2D;
+	image.format = depthFormat;
+	image.extent = { width, height, 1 };
+	image.mipLevels = 1;
+	image.arrayLayers = 1;
+	image.samples = VK_SAMPLE_COUNT_1_BIT;
+	image.tiling = VK_IMAGE_TILING_OPTIMAL;
+	image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+	VkMemoryAllocateInfo mAlloc = {};
+	mAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+
+	VkImageViewCreateInfo depthStencilView = {};
+	depthStencilView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	depthStencilView.format = depthFormat;
+	depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	depthStencilView.subresourceRange.baseMipLevel = 0;
+	depthStencilView.subresourceRange.levelCount = 1;
+	depthStencilView.subresourceRange.baseArrayLayer = 0;
+	depthStencilView.subresourceRange.layerCount = 1;
+
+	VkMemoryRequirements memReqs;
+	VkResult error;
+
+	error = vkCreateImage(logicalDevice, &image, nullptr, &depthStencil->image);
+	Assert(error == VK_SUCCESS, "could not create vk image");
+	vkGetImageMemoryRequirements(logicalDevice, depthStencil->image, &memReqs);
+	mAlloc.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mAlloc.memoryTypeIndex);
+	error = vkAllocateMemory(logicalDevice, &mAlloc, nullptr, &depthStencil->mem);
+	Assert(error == VK_SUCCESS, "could not allocate memory on device");
+
+	error = vkBindImageMemory(logicalDevice, depthStencil->image, depthStencil->mem, 0);
+	Assert(error == VK_SUCCESS, "could not bind image to memory");
+
+
+	SetImageLayout(setupCmdBuffer, 
+		depthStencil->image,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	depthStencilView.image = depthStencil->image;
+	error = vkCreateImageView(logicalDevice, &depthStencilView, nullptr, &depthStencil->view);
+	Assert(error == VK_SUCCESS, "could not create image view");
+
+
+}
+
 void Init(MainMemory* mainMemory)
 {
 
     mainMemory->running = true;
     mainMemory->consoleHandle = GetConsoleWindow();
-    ShowWindow(mainMemory->consoleHandle, SW_HIDE);
+    //ShowWindow(mainMemory->consoleHandle, SW_HIDE);
     mainMemory->clientWidth = 1200;
     mainMemory->clientHeight = 800;
 
@@ -779,9 +890,7 @@ void Init(MainMemory* mainMemory)
 	for (uint32_t i = 0; i < layerProps.size(); i++)
 	{
 		mainMemory->instanceLayerList.push_back(layerProps[i].layerName);
-
 	}
-
 #endif
 
     mainMemory->vkInstance = NewVkInstance(mainMemory->instanceLayerList, mainMemory->instanceExtList);
@@ -805,8 +914,8 @@ void Init(MainMemory* mainMemory)
                             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
                             VK_DEBUG_REPORT_ERROR_BIT_EXT |
                             VK_DEBUG_REPORT_DEBUG_BIT_EXT;
-    CreateDebugReportCallbackEXT(mainMemory->vkInstance, &debugCreateInfo, nullptr, &mainMemory->debugReport);
-
+    VkResult error = CreateDebugReportCallbackEXT(mainMemory->vkInstance, &debugCreateInfo, nullptr, &mainMemory->debugReport);
+	Assert(error == VK_SUCCESS, "could not create vulkan error callback");
 #endif
 
 
@@ -862,11 +971,22 @@ void Init(MainMemory* mainMemory)
     mainMemory->cmdPool = NewCommandPool(mainMemory->renderingQueueFamilyIndex, mainMemory->logicalDevice);
     mainMemory->setupCommandBuffer = NewSetupCommandBuffer(mainMemory->logicalDevice,
                                      mainMemory->cmdPool);
-
-
-
     InitSwapChain(mainMemory, &mainMemory->clientWidth, &mainMemory->clientHeight);
+	CreateCommandBuffers(mainMemory->logicalDevice,
+		mainMemory->drawCmdBuffers,
+		&mainMemory->prePresentCmdBuffer,
+		&mainMemory->postPresentCmdBuffer,
+		mainMemory->surfaceImageCount,
+		mainMemory->cmdPool);
+	setupDepthStencil(mainMemory->logicalDevice, 
+		&mainMemory->depthStencil, 
+		mainMemory->surfaceColorFormat, 
+		mainMemory->clientWidth, 
+		mainMemory->clientHeight, 
+		mainMemory->memoryProperties, 
+		mainMemory->setupCommandBuffer);
 }
+
 
 void UpdateAndRender(MainMemory* mainMemory)
 {
