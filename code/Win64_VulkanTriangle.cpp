@@ -43,6 +43,24 @@ struct DepthStencil
 	VkDeviceMemory mem;
 	VkImageView view;
 };
+struct Vertex
+{
+	float pos[3];
+	float col[3];
+};
+struct IndexBuffer
+{
+	int count;
+	VkBuffer buf;
+	VkDeviceMemory mem;
+};
+
+struct StagingBuffer
+{
+	VkDeviceMemory memory;
+	VkBuffer buffer;
+};
+
 //main struct, pretty much holds everything
 struct MainMemory
 {
@@ -64,6 +82,7 @@ struct MainMemory
     std::vector<SwapChainBuffer> surfaceBuffers;
 
     VkPhysicalDevice physicalDevice;
+
     uint32_t renderingQueueFamilyIndex;
     VkFormat supportedDepthFormat;
     VkPhysicalDeviceFeatures deviceFeatures;
@@ -91,6 +110,18 @@ struct MainMemory
 	VkCommandBuffer	postPresentCmdBuffer;
 
 	DepthStencil depthStencil;
+
+	VkRenderPass renderPass;
+	VkPipelineCache pipelineCache;
+	std::vector<VkFramebuffer> frameBuffers;
+
+	VkCommandBuffer textureCmdBuffer;
+
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	IndexBuffer indexBuffer;
+
 
 };
 
@@ -772,32 +803,45 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 
 }
 #endif
+VkCommandBuffer NewCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool)
+{
+	VkCommandBuffer cmdBuffer;
+	VkCommandBufferAllocateInfo cmdAllocInfo = {};
+	cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdAllocInfo.commandPool = cmdPool;
+	cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdAllocInfo.commandBufferCount = 1;
 
-void CreateCommandBuffers(VkDevice logicalDevice, 
-	std::vector<VkCommandBuffer> drawCmdBuffers, 
+	VkResult error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, &cmdBuffer);
+	Assert(error == VK_SUCCESS, "could not create command buffer");
+	return cmdBuffer;
+}
+
+std::vector<VkCommandBuffer> NewCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool, uint32_t numBuffers)
+{
+	std::vector<VkCommandBuffer> cmdBuffers(numBuffers);
+	VkCommandBufferAllocateInfo cmdAllocInfo = {};
+	cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdAllocInfo.commandPool = cmdPool;
+	cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdAllocInfo.commandBufferCount = numBuffers;
+
+	VkResult error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, cmdBuffers.data());
+	Assert(error == VK_SUCCESS, "could not create command buffers");
+	return cmdBuffers;
+}
+
+void SetupCommandBuffers(VkDevice logicalDevice, 
+	std::vector<VkCommandBuffer>* drawCmdBuffers, 
 	VkCommandBuffer* prePresentCmdBuffer, 
 	VkCommandBuffer* postPresentCmdBuffer,  
 	uint32_t swapchainImageCount, 
 	VkCommandPool cmdPool)
 {
-	drawCmdBuffers.resize(swapchainImageCount);
-
-	VkCommandBufferAllocateInfo cmdAllocInfo = {};
-	cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cmdAllocInfo.commandPool = cmdPool;
-	cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cmdAllocInfo.commandBufferCount = swapchainImageCount;
-
-	VkResult error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, drawCmdBuffers.data());
-	Assert(error == VK_SUCCESS, "could not create drawing command buffers");
-	
-	//TODO create a move general command buffer creation function?
-	cmdAllocInfo.commandBufferCount = 1;
-	error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, prePresentCmdBuffer);
-	Assert(error == VK_SUCCESS, "could not create prepresent command buffers");
-
-	error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, postPresentCmdBuffer);
-	Assert(error == VK_SUCCESS, "could not create post present command buffers");
+	drawCmdBuffers->resize(swapchainImageCount);
+	*drawCmdBuffers = NewCommandBuffer(logicalDevice, cmdPool, swapchainImageCount);
+	*prePresentCmdBuffer = NewCommandBuffer(logicalDevice, cmdPool);
+	*postPresentCmdBuffer = NewCommandBuffer(logicalDevice, cmdPool);
 
 }
 
@@ -841,7 +885,7 @@ void setupDepthStencil(VkDevice logicalDevice,
 	depthStencilView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	depthStencilView.format = depthFormat;
-	depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	depthStencilView.subresourceRange.aspectMask = /*VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT |*/ VK_IMAGE_ASPECT_COLOR_BIT; //NOTE ONLY the color bit can be set NOTHING else
 	depthStencilView.subresourceRange.baseMipLevel = 0;
 	depthStencilView.subresourceRange.levelCount = 1;
 	depthStencilView.subresourceRange.baseArrayLayer = 0;
@@ -870,41 +914,177 @@ void setupDepthStencil(VkDevice logicalDevice,
 	depthStencilView.image = depthStencil->image;
 	error = vkCreateImageView(logicalDevice, &depthStencilView, nullptr, &depthStencil->view);
 	Assert(error == VK_SUCCESS, "could not create image view");
+}
+
+VkRenderPass NewRenderPass(VkDevice logicalDevice, VkFormat surfaceColorFormat, VkFormat depthFormat)
+{
+	VkAttachmentDescription attach[2] = {};
+	attach[0].format = surfaceColorFormat;
+	attach[0].samples = VK_SAMPLE_COUNT_1_BIT;
+	attach[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attach[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attach[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attach[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attach[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	attach[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	attach[1].format = depthFormat;
+	attach[1].samples = VK_SAMPLE_COUNT_1_BIT;
+	attach[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attach[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attach[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attach[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attach[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	attach[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference colorRef = {};
+	colorRef.attachment = 0;
+	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depthRef = {};
+	depthRef.attachment = 1;
+	depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.flags = 0;
+	subpass.inputAttachmentCount = 0;
+	subpass.pInputAttachments = nullptr;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorRef;
+	subpass.pResolveAttachments = nullptr;
+	subpass.pDepthStencilAttachment = &depthRef;
+	subpass.preserveAttachmentCount = 0;
+	subpass.pPreserveAttachments = nullptr;
+
+	VkRenderPassCreateInfo rpInfo = {};
+	rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	rpInfo.pNext = nullptr;
+	rpInfo.attachmentCount = 2;
+	rpInfo.pAttachments = attach;
+	rpInfo.subpassCount = 1;
+	rpInfo.pSubpasses = &subpass;
+	rpInfo.dependencyCount = 0;
+	rpInfo.pDependencies = nullptr;
+
+	VkRenderPass rp;
+	VkResult error = vkCreateRenderPass(logicalDevice, &rpInfo, nullptr, &rp);
+	Assert(error == VK_SUCCESS, "could not create renderpass");
+	return rp;
+}
+
+VkPipelineCache NewPipelineCache(VkDevice logicalDevice)
+{
+	VkPipelineCache plCache;
+	VkPipelineCacheCreateInfo plcInfo = {};
+	plcInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+	VkResult error = vkCreatePipelineCache(logicalDevice, &plcInfo, nullptr, &plCache);
+	Assert(error == VK_SUCCESS, "could not create pipeline cache");
+	return plCache;
+}
+
+std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice, 
+	std::vector<SwapChainBuffer> surfaceBuffers,
+	VkRenderPass renderPass, 
+	VkImageView depthStencilView, 
+	uint32_t numBuffers, 
+	uint32_t width, 
+	uint32_t height)
+{
+	VkImageView attach[2] = {};
+	attach[1] = depthStencilView;
+	VkFramebufferCreateInfo fbInfo = {};
+	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	fbInfo.renderPass = renderPass;
+	fbInfo.attachmentCount = 2;
+	fbInfo.pAttachments = attach;
+	fbInfo.width = width;
+	fbInfo.height = height;
+	fbInfo.layers = 1;
+	
+	VkResult error;
+	std::vector<VkFramebuffer> frameBuffers(numBuffers);
+	for (uint32_t i = 0; i < numBuffers; i++)
+	{
+		attach[0] = surfaceBuffers[i].view;
+		error = vkCreateFramebuffer(logicalDevice, &fbInfo, nullptr, &frameBuffers[i]);
+		Assert(error == VK_SUCCESS, "could not create frame buffer");
+
+	}
+	return frameBuffers;
+}
+
+void FlushSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool, VkCommandBuffer* setupCmdBuffer, VkQueue queue)
+{
+	VkResult error;
+	if (setupCmdBuffer == nullptr)
+		return;
+	error = vkEndCommandBuffer(*setupCmdBuffer);
+	Assert(error == VK_SUCCESS, "could not end setup command buffer");
+
+	VkSubmitInfo sInfo = {};
+	sInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	sInfo.commandBufferCount = 1;
+	sInfo.pCommandBuffers = setupCmdBuffer;
+
+	error = vkQueueSubmit(queue, 1, &sInfo, nullptr);
+	Assert(error == VK_SUCCESS, "could not submit queue to setup cmd buffer");
+
+	error = vkQueueWaitIdle(queue);
+	Assert(error == VK_SUCCESS, "wait idle failed for setupcmdbuffer");
+
+	vkFreeCommandBuffers(logicalDevice, cmdPool, 1, setupCmdBuffer);
+	setupCmdBuffer = nullptr;
+}
+
+void prepareVertexData(VkDevice logicalDevice, VkCommandPool cmdPool, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices)
+{
+	size_t vertexBufferSize = vertices->size() * sizeof(Vertex);
+	size_t indexBufferSize = indices->size() * sizeof(uint32_t);
+
+	VkMemoryAllocateInfo mAlloc = {};
+	mAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	VkMemoryRequirements memReqs;
+
+	void* data;
+
+	VkCommandBuffer copyCommandBuffer = NewCommandBuffer(logicalDevice, cmdPool);
+
 
 
 }
 
-void Init(MainMemory* mainMemory)
+void Init(MainMemory* m)
 {
 
-    mainMemory->running = true;
-    mainMemory->consoleHandle = GetConsoleWindow();
-    //ShowWindow(mainMemory->consoleHandle, SW_HIDE);
-    mainMemory->clientWidth = 1200;
-    mainMemory->clientHeight = 800;
+    m->running = true;
+    m->consoleHandle = GetConsoleWindow();
+    //ShowWindow(m->consoleHandle, SW_HIDE);
+    m->clientWidth = 1200;
+    m->clientHeight = 800;
 
-    mainMemory->windowHandle = NewWindow(mainMemory, mainMemory->clientWidth, mainMemory->clientHeight);
+    m->windowHandle = NewWindow(m, m->clientWidth, m->clientHeight);
 
 #if VALIDATION_LAYERS
 	std::vector<VkLayerProperties> layerProps = GetInstalledVkLayers();
 	for (uint32_t i = 0; i < layerProps.size(); i++)
 	{
-		mainMemory->instanceLayerList.push_back(layerProps[i].layerName);
+		m->instanceLayerList.push_back(layerProps[i].layerName);
 	}
 #endif
 
-    mainMemory->vkInstance = NewVkInstance(mainMemory->instanceLayerList, mainMemory->instanceExtList);
-    mainMemory->surface = NewSurface(mainMemory->windowHandle, mainMemory->exeHandle, mainMemory->vkInstance);
+    m->vkInstance = NewVkInstance(m->instanceLayerList, m->instanceExtList);
+    m->surface = NewSurface(m->windowHandle, m->exeHandle, m->vkInstance);
 
     //get function pointers after creating instance of vulkan
-    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceSupportKHR);
-    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceCapabilitiesKHR);
-    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfaceFormatsKHR);
-    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, GetPhysicalDeviceSurfacePresentModesKHR);
+    GET_VULKAN_FUNCTION_POINTER_INST(m->vkInstance, GetPhysicalDeviceSurfaceSupportKHR);
+    GET_VULKAN_FUNCTION_POINTER_INST(m->vkInstance, GetPhysicalDeviceSurfaceCapabilitiesKHR);
+    GET_VULKAN_FUNCTION_POINTER_INST(m->vkInstance, GetPhysicalDeviceSurfaceFormatsKHR);
+    GET_VULKAN_FUNCTION_POINTER_INST(m->vkInstance, GetPhysicalDeviceSurfacePresentModesKHR);
 
 #if VALIDATION_LAYERS
-    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, CreateDebugReportCallbackEXT);
-    GET_VULKAN_FUNCTION_POINTER_INST(mainMemory->vkInstance, DestroyDebugReportCallbackEXT);
+    GET_VULKAN_FUNCTION_POINTER_INST(m->vkInstance, CreateDebugReportCallbackEXT);
+    GET_VULKAN_FUNCTION_POINTER_INST(m->vkInstance, DestroyDebugReportCallbackEXT);
 
     VkDebugReportCallbackCreateInfoEXT debugCreateInfo = {};
     debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
@@ -914,77 +1094,106 @@ void Init(MainMemory* mainMemory)
                             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
                             VK_DEBUG_REPORT_ERROR_BIT_EXT |
                             VK_DEBUG_REPORT_DEBUG_BIT_EXT;
-    VkResult error = CreateDebugReportCallbackEXT(mainMemory->vkInstance, &debugCreateInfo, nullptr, &mainMemory->debugReport);
+    VkResult error = CreateDebugReportCallbackEXT(m->vkInstance, &debugCreateInfo, nullptr, &m->debugReport);
 	Assert(error == VK_SUCCESS, "could not create vulkan error callback");
 #endif
 
 
     uint32_t gpuCount;
-    std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(mainMemory->vkInstance, &gpuCount);
-    mainMemory->physicalDevice = physicalDevices[0];
+    std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(m->vkInstance, &gpuCount);
+    m->physicalDevice = physicalDevices[0];
 
     //see what the gpu is capable of
     //NOTE not actually used in other code
-    vkGetPhysicalDeviceFeatures(mainMemory->physicalDevice, &mainMemory->deviceFeatures);
+    vkGetPhysicalDeviceFeatures(m->physicalDevice, &m->deviceFeatures);
 
-    vkGetPhysicalDeviceMemoryProperties(mainMemory->physicalDevice, &mainMemory->memoryProperties);
+    vkGetPhysicalDeviceMemoryProperties(m->physicalDevice, &m->memoryProperties);
 
-    mainMemory->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(mainMemory->physicalDevice, mainMemory->surface);
+    m->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(m->physicalDevice, m->surface);
 
 #if VALIDATION_LAYERS
-    std::vector<VkLayerProperties> layerPropsDevice = GetInstalledVkLayers(mainMemory->physicalDevice);
+    std::vector<VkLayerProperties> layerPropsDevice = GetInstalledVkLayers(m->physicalDevice);
     for (uint32_t i = 0; i < layerPropsDevice.size(); i++)
     {
-        mainMemory->deviceLayerList.push_back(layerPropsDevice[i].layerName);
+        m->deviceLayerList.push_back(layerPropsDevice[i].layerName);
 
     }
 #endif
-    mainMemory->logicalDevice = NewLogicalDevice(mainMemory->physicalDevice, mainMemory->renderingQueueFamilyIndex, mainMemory->deviceLayerList, mainMemory->deviceExtList);
-    vkGetDeviceQueue(mainMemory->logicalDevice, mainMemory->renderingQueueFamilyIndex, 0, &mainMemory->queue);
-    mainMemory->supportedDepthFormat = GetSupportedDepthFormat(mainMemory->physicalDevice);
+    m->logicalDevice = NewLogicalDevice(m->physicalDevice, m->renderingQueueFamilyIndex, m->deviceLayerList, m->deviceExtList);
+    vkGetDeviceQueue(m->logicalDevice, m->renderingQueueFamilyIndex, 0, &m->queue);
+    m->supportedDepthFormat = GetSupportedDepthFormat(m->physicalDevice);
 
 
     //after logical device creation we can retrieve function pointers associated with it
-    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, CreateSwapchainKHR);
-    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, DestroySwapchainKHR);
-    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, GetSwapchainImagesKHR);
-    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, AcquireNextImageKHR);
-    GET_VULKAN_FUNCTION_POINTER_DEV(mainMemory->logicalDevice, QueuePresentKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, CreateSwapchainKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, DestroySwapchainKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, GetSwapchainImagesKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, AcquireNextImageKHR);
+    GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, QueuePresentKHR);
 
 
-    mainMemory->presentComplete = NewSemaphore(mainMemory->logicalDevice);
-    mainMemory->renderComplete = NewSemaphore(mainMemory->logicalDevice);
+    m->presentComplete = NewSemaphore(m->logicalDevice);
+    m->renderComplete = NewSemaphore(m->logicalDevice);
 
-    mainMemory->submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    mainMemory->submitInfo.pWaitDstStageMask = (VkPipelineStageFlags*)VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    mainMemory->submitInfo.waitSemaphoreCount = 1;
-    mainMemory->submitInfo.pWaitSemaphores = &mainMemory->presentComplete;
-    mainMemory->submitInfo.signalSemaphoreCount = 1;
-    mainMemory->submitInfo.pSignalSemaphores = &mainMemory->renderComplete;
+    m->submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    m->submitInfo.pWaitDstStageMask = (VkPipelineStageFlags*)VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    m->submitInfo.waitSemaphoreCount = 1;
+    m->submitInfo.pWaitSemaphores = &m->presentComplete;
+    m->submitInfo.signalSemaphoreCount = 1;
+    m->submitInfo.pSignalSemaphores = &m->renderComplete;
 
 
-    GetSurfaceColorSpaceAndFormat(mainMemory->physicalDevice,
-                                  mainMemory->surface,
-                                  &mainMemory->surfaceColorFormat,
-                                  &mainMemory->surfaceColorSpace);
+    GetSurfaceColorSpaceAndFormat(m->physicalDevice,
+                                  m->surface,
+                                  &m->surfaceColorFormat,
+                                  &m->surfaceColorSpace);
 
-    mainMemory->cmdPool = NewCommandPool(mainMemory->renderingQueueFamilyIndex, mainMemory->logicalDevice);
-    mainMemory->setupCommandBuffer = NewSetupCommandBuffer(mainMemory->logicalDevice,
-                                     mainMemory->cmdPool);
-    InitSwapChain(mainMemory, &mainMemory->clientWidth, &mainMemory->clientHeight);
-	CreateCommandBuffers(mainMemory->logicalDevice,
-		mainMemory->drawCmdBuffers,
-		&mainMemory->prePresentCmdBuffer,
-		&mainMemory->postPresentCmdBuffer,
-		mainMemory->surfaceImageCount,
-		mainMemory->cmdPool);
-	setupDepthStencil(mainMemory->logicalDevice, 
-		&mainMemory->depthStencil, 
-		mainMemory->surfaceColorFormat, 
-		mainMemory->clientWidth, 
-		mainMemory->clientHeight, 
-		mainMemory->memoryProperties, 
-		mainMemory->setupCommandBuffer);
+    m->cmdPool = NewCommandPool(m->renderingQueueFamilyIndex, m->logicalDevice);
+    m->setupCommandBuffer = NewSetupCommandBuffer(m->logicalDevice,
+                                     m->cmdPool);
+    InitSwapChain(m, &m->clientWidth, &m->clientHeight);
+	SetupCommandBuffers(m->logicalDevice,
+		&m->drawCmdBuffers,
+		&m->prePresentCmdBuffer,
+		&m->postPresentCmdBuffer,
+		m->surfaceImageCount,
+		m->cmdPool);
+	setupDepthStencil(m->logicalDevice, 
+		&m->depthStencil, 
+		m->surfaceColorFormat, 
+		m->clientWidth, 
+		m->clientHeight, 
+		m->memoryProperties, 
+		m->setupCommandBuffer);
+
+	m->renderPass = NewRenderPass(m->logicalDevice, m->surfaceColorFormat, m->supportedDepthFormat);
+	m->pipelineCache = NewPipelineCache(m->logicalDevice);
+	m->frameBuffers = NewFrameBuffer(m->logicalDevice,
+		m->surfaceBuffers, 
+		m->renderPass, 
+		m->depthStencil.view, 
+		m->surfaceImageCount, 
+		m->clientWidth, 
+		m->clientHeight);
+	//TODO why does the setup cmd buffer need to be flushed and recreated?
+	FlushSetupCommandBuffer(m->logicalDevice, m->cmdPool, &m->setupCommandBuffer, m->queue);
+	m->setupCommandBuffer = NewSetupCommandBuffer(m->logicalDevice,
+		m->cmdPool);
+	//create cmd buffer for image barriers and converting tilings
+	//TODO what are tilings?
+	m->textureCmdBuffer = NewCommandBuffer(m->logicalDevice, m->cmdPool);
+
+	m->vertices =
+	{
+		{{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+		{ { -1.0f, 1.0f, 0.0f },{ 0.0f, 1.0f, 0.0f } },
+		{ { 0.0f, -1.0f, 0.0f },{ 0.0f, 0.0f, 1.0f } }
+	};
+	m->indices = { 0, 1, 2 };
+	m->indexBuffer.count = 3;
+
+
+
 }
 
 
@@ -1011,7 +1220,10 @@ void Quit(MainMemory* mainMemory)
     DestroyDebugReportCallbackEXT(mainMemory->vkInstance, mainMemory->debugReport, nullptr);
 #endif
 }
-
+void foo(std::vector<int> values)
+{
+	values[0] = 2;
+}
 //app entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
 int main(int argv, char** argc)
 {
