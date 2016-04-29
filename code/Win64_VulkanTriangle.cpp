@@ -30,7 +30,8 @@ PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT = nullptr;
 PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallbackEXT = nullptr;
 
 
-const char* EXE_NAME = "VulkanTriangle";
+static const char* EXE_NAME = "VulkanTriangle";
+static const uint32_t VERTEX_BUFFER_BIND_ID = 0;
 
 struct SwapChainBuffer
 {
@@ -1157,62 +1158,32 @@ void PrepareVertexData(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties 
 	vkDestroyBuffer(logicalDevice, stagingBuffers.indices.buffer, nullptr);
 	vkFreeMemory(logicalDevice, stagingBuffers.indices.memory, nullptr);
 
+	//binding desc
+	vertexBuffer->vBindingDesc.resize(1);
+	vertexBuffer->vBindingDesc[0].binding = VERTEX_BUFFER_BIND_ID;
+	vertexBuffer->vBindingDesc[0].stride = sizeof(Vertex);
+	vertexBuffer->vBindingDesc[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	/*//vertex buffer
-	stagingBuffers.vertices.buffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-	//TODO can this be moved to a function? what would it be called?
-	vkGetBufferMemoryRequirements(logicalDevice, stagingBuffers.vertices.buffer, &memReqs);
-	maInfo.allocationSize = memReqs.size;
-	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &maInfo.memoryTypeIndex);
-	VkResult error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &stagingBuffers.vertices.memory);
-	Assert(error, "could not allocate memory for vertices");
-	//map and copy
-	//TODO function?
-	error = vkMapMemory(logicalDevice, stagingBuffers.vertices.memory, 0, maInfo.allocationSize, 0, &data);
-	Assert(error, "could not map memory for vertices");
-	memcpy(data, vertices->data(), vertexBufferSize);
-	vkUnmapMemory(logicalDevice, stagingBuffers.vertices.memory);
-	error = vkBindBufferMemory(logicalDevice, stagingBuffers.vertices.buffer, stagingBuffers.vertices.memory, 0);
-	Assert(error, "could not bind memory for vertices");
+	vertexBuffer->vBindingAttr.resize(2);
+	//location 0 is position
+	vertexBuffer->vBindingAttr[0].binding = VERTEX_BUFFER_BIND_ID;
+	vertexBuffer->vBindingAttr[0].location = 0;
+	vertexBuffer->vBindingAttr[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	vertexBuffer->vBindingAttr[0].offset = 0;
+	vertexBuffer->vBindingAttr[0].binding = 0;
 
-	vertexBuffer->vBuffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-	vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer->vBuffer, &memReqs);
-	maInfo.allocationSize = memReqs.size;
-	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &maInfo.memoryTypeIndex);
-	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &vertexBuffer->vMemory);
-	Assert(error, "could not allocate memory for vertex buffer memory");
-	error = vkBindBufferMemory(logicalDevice, vertexBuffer->vBuffer, vertexBuffer->vMemory, 0);
-	Assert(error, "could not bind memory for vertex buffer memory");
+	vertexBuffer->vBindingAttr[1].binding = VERTEX_BUFFER_BIND_ID;
+	vertexBuffer->vBindingAttr[1].location = 1;
+	vertexBuffer->vBindingAttr[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	vertexBuffer->vBindingAttr[1].offset = sizeof(float) * 3;
+	vertexBuffer->vBindingAttr[1].binding = 0;
 
-	//index buffer
-	stagingBuffers.indices.buffer = NewBuffer(logicalDevice, indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-	//TODO can this be moved to a function? what would it be called?
-	vkGetBufferMemoryRequirements(logicalDevice, stagingBuffers.indices.buffer, &memReqs);
-	maInfo.allocationSize = memReqs.size;
-	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &maInfo.memoryTypeIndex);
-	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &stagingBuffers.indices.memory);
-	Assert(error, "could not allocate memory for vertices");
-	//map and copy
-	//TODO function?
-	error = vkMapMemory(logicalDevice, stagingBuffers.indices.memory, 0, maInfo.allocationSize, 0, &data);
-	Assert(error, "could not map memory for indices");
-	memcpy(data, indices->data(), indexBufferSize);
-	vkUnmapMemory(logicalDevice, stagingBuffers.indices.memory);
-	error = vkBindBufferMemory(logicalDevice, stagingBuffers.indices.buffer, stagingBuffers.indices.memory, 0);
-	Assert(error, "could not bind memory for indices");
-
-	vertexBuffer->vBuffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-	vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer->vBuffer, &memReqs);
-	maInfo.allocationSize = memReqs.size;
-	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &maInfo.memoryTypeIndex);
-	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &vertexBuffer->vMemory);
-	Assert(error, "could not allocate memory for index buffer memory");
-	error = vkBindBufferMemory(logicalDevice, vertexBuffer->vBuffer, vertexBuffer->vMemory, 0);
-	Assert(error, "could not bind memory for index buffer memory");
-	*/
-
-
-
+	vertexBuffer->viInfo = {}; //must zero init to ensure pnext is zero (and everything else isnt trash)
+	vertexBuffer->viInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexBuffer->viInfo.vertexBindingDescriptionCount = vertexBuffer->vBindingDesc.size();
+	vertexBuffer->viInfo.pVertexBindingDescriptions = vertexBuffer->vBindingDesc.data();
+	vertexBuffer->viInfo.vertexAttributeDescriptionCount = vertexBuffer->vBindingAttr.size();
+	vertexBuffer->viInfo.pVertexAttributeDescriptions = vertexBuffer->vBindingAttr.data();
 
 }
 
