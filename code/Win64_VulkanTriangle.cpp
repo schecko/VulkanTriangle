@@ -37,28 +37,54 @@ struct SwapChainBuffer
     VkImage image;
     VkImageView view;
 };
+
+//TODO dont really know
+//TODO rename?
 struct DepthStencil
 {
 	VkImage image;
 	VkDeviceMemory mem;
 	VkImageView view;
 };
+
+//vertex data store don ram
 struct Vertex
 {
 	float pos[3];
 	float col[3];
 };
-struct IndexBuffer
-{
-	int count;
-	VkBuffer buf;
-	VkDeviceMemory mem;
-};
 
+
+//temporary buffers and memory used to move the vertex data to the gpu
 struct StagingBuffer
 {
 	VkDeviceMemory memory;
 	VkBuffer buffer;
+};
+
+struct StagingBuffers
+{
+	StagingBuffer vertices;
+	StagingBuffer indices;
+};
+
+//vertex data stored on the gpu ram
+struct VertexBuffer
+{
+	//vertex placement data
+	std::vector<Vertex> vPos;
+	VkBuffer vBuffer;
+	VkDeviceMemory vMemory;
+	VkPipelineVertexInputStateCreateInfo viInfo;
+	std::vector<VkVertexInputBindingDescription> vBindingDesc;
+	std::vector<VkVertexInputAttributeDescription> vBindingAttr;
+	
+	//vertex index data
+	std::vector<uint32_t> iPos;
+	int iCount;
+	VkBuffer iBuffer;
+	VkDeviceMemory iMemory;
+
 };
 
 //main struct, pretty much holds everything
@@ -117,10 +143,7 @@ struct MainMemory
 
 	VkCommandBuffer textureCmdBuffer;
 
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-
-	IndexBuffer indexBuffer;
+	VertexBuffer vertexBuffer;
 
 
 };
@@ -179,9 +202,14 @@ void Assert(bool test, std::string message)
         std::cout << message.c_str() << std::endl;
         std::cout << "Type anything and press enter if you wish to continue anyway; best to exit though." << std::endl;
         std::cin >> x;
-        ShowWindow(consoleHandle, SW_HIDE);
+        //ShowWindow(consoleHandle, SW_HIDE);
     }
 #endif
+}
+
+void Assert(VkResult test, std::string message)
+{
+	Assert(test == VK_SUCCESS, message);
 }
 
 
@@ -283,12 +311,12 @@ std::vector<VkPhysicalDevice> EnumeratePhysicalDevices(VkInstance vkInstance, ui
 
     VkResult error;
     error = vkEnumeratePhysicalDevices(vkInstance, gpuCount, nullptr);
-    Assert(error == VK_SUCCESS, "could not enumerate gpus");
+    Assert(error, "could not enumerate gpus");
     Assert(gpuCount > 0, "no compatible vulkan gpus available");
 
     std::vector<VkPhysicalDevice> physicalDevices(*gpuCount);
     error = vkEnumeratePhysicalDevices(vkInstance, gpuCount, physicalDevices.data());
-    Assert(error == VK_SUCCESS, "could not enumerate physical devices (2nd usage of 2)");
+    Assert(error, "could not enumerate physical devices (2nd usage of 2)");
 
     return physicalDevices;
 }
@@ -350,7 +378,7 @@ VkDevice NewLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t renderingQue
     VkDevice logicalDevice;
     error = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &logicalDevice);
 
-    Assert(error == VK_SUCCESS, "could not create logical device");
+    Assert(error, "could not create logical device");
     return logicalDevice;
 }
 
@@ -388,7 +416,7 @@ VkSemaphore NewSemaphore(VkDevice logicalDevice)
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     VkSemaphore semaphore;
     VkResult error = vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore);
-    Assert(error == VK_SUCCESS, "could not create semaphore");
+    Assert(error, "could not create semaphore");
     return semaphore;
 }
 
@@ -405,7 +433,7 @@ VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkIns
                                     nullptr,
                                     &surface);
 
-    Assert(error == VK_SUCCESS, "could not create windows surface");
+    Assert(error, "could not create windows surface");
 
     return surface;
 }
@@ -418,7 +446,7 @@ void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
     uint32_t surfaceFormatCount;
     VkResult error;
     error = GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
-    Assert(error == VK_SUCCESS, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
+    Assert(error, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
     Assert(surfaceFormatCount > 0, "surfaceformatcount is less than 1");
 
     std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
@@ -426,7 +454,7 @@ void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
             surface,
             &surfaceFormatCount,
             surfaceFormats.data());
-    Assert(error == VK_SUCCESS, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
+    Assert(error, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
 
     if (surfaceFormatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
     {
@@ -448,7 +476,7 @@ VkCommandPool NewCommandPool(uint32_t renderingAndPresentingIndex, VkDevice logi
     poolInfo.queueFamilyIndex = renderingAndPresentingIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     error = vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &pool);
-    Assert(error == VK_SUCCESS, "could not create command pool.");
+    Assert(error, "could not create command pool.");
     return pool;
 }
 
@@ -464,11 +492,11 @@ VkCommandBuffer NewSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdP
 
 
     error = vkAllocateCommandBuffers(logicalDevice, &bufferAllocInfo, &setupBuffer);
-    Assert(error == VK_SUCCESS, "could not create setup command buffer");
+    Assert(error, "could not create setup command buffer");
     VkCommandBufferBeginInfo setupBeginInfo = {};
     setupBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     error = vkBeginCommandBuffer(setupBuffer, &setupBeginInfo);
-    Assert(error == VK_SUCCESS, "could not begin setup command buffer.");
+    Assert(error, "could not begin setup command buffer.");
     return setupBuffer;
 
 }
@@ -608,14 +636,14 @@ void InitSwapChain(
     error = GetPhysicalDeviceSurfaceCapabilitiesKHR(mainMemory->physicalDevice,
             mainMemory->surface,
             &surfaceCaps);
-    Assert(error == VK_SUCCESS, "could not get surface capabilities, the function is probably null?");
+    Assert(error, "could not get surface capabilities, the function is probably null?");
 
     uint32_t presentModeCount;
     error = GetPhysicalDeviceSurfacePresentModesKHR(mainMemory->physicalDevice,
             mainMemory->surface,
             &presentModeCount,
             nullptr);
-    Assert(error == VK_SUCCESS, "could not get surface present modes");
+    Assert(error, "could not get surface present modes");
     Assert(presentModeCount > 0, "present mode count is zero!!");
 
     std::vector<VkPresentModeKHR> presentModes(presentModeCount);
@@ -625,7 +653,7 @@ void InitSwapChain(
             mainMemory->surface,
             &presentModeCount,
             presentModes.data());
-    Assert(error == VK_SUCCESS, "could not get the present Modes");
+    Assert(error, "could not get the present Modes");
 
     VkExtent2D swapChainExtent = {};
     //width and height are either both -1, or both not -1
@@ -691,14 +719,14 @@ void InitSwapChain(
     swapchainCI.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
     error = CreateSwapchainKHR(mainMemory->logicalDevice, &swapchainCI, nullptr, &swapChain);
-    Assert(error == VK_SUCCESS, "could not create a swapchain");
+    Assert(error, "could not create a swapchain");
 
     error = GetSwapchainImagesKHR(mainMemory->logicalDevice, swapChain, &mainMemory->surfaceImageCount, nullptr);
-    Assert(error == VK_SUCCESS, "could not get surface image count");
+    Assert(error, "could not get surface image count");
     mainMemory->surfaceImages.resize(mainMemory->surfaceImageCount);
     mainMemory->surfaceBuffers.resize(mainMemory->surfaceImageCount);
     error = GetSwapchainImagesKHR(mainMemory->logicalDevice, swapChain, &mainMemory->surfaceImageCount, mainMemory->surfaceImages.data());
-    Assert(error == VK_SUCCESS, "could not fill surface images vector");
+    Assert(error, "could not fill surface images vector");
 
     for (uint32_t i = 0; i < mainMemory->surfaceImageCount; i++)
     {
@@ -729,7 +757,7 @@ void InitSwapChain(
 
         colorAttachmentView.image = mainMemory->surfaceBuffers[i].image;
         error = vkCreateImageView(mainMemory->logicalDevice, &colorAttachmentView, nullptr, &mainMemory->surfaceBuffers[i].view);
-        Assert(error == VK_SUCCESS, "could not create image view");
+        Assert(error, "could not create image view");
     }
 
 
@@ -827,7 +855,7 @@ std::vector<VkCommandBuffer> NewCommandBuffer(VkDevice logicalDevice, VkCommandP
 	cmdAllocInfo.commandBufferCount = numBuffers;
 
 	VkResult error = vkAllocateCommandBuffers(logicalDevice, &cmdAllocInfo, cmdBuffers.data());
-	Assert(error == VK_SUCCESS, "could not create command buffers");
+	Assert(error, "could not create command buffers");
 	return cmdBuffers;
 }
 
@@ -895,15 +923,15 @@ void setupDepthStencil(VkDevice logicalDevice,
 	VkResult error;
 
 	error = vkCreateImage(logicalDevice, &image, nullptr, &depthStencil->image);
-	Assert(error == VK_SUCCESS, "could not create vk image");
+	Assert(error, "could not create vk image");
 	vkGetImageMemoryRequirements(logicalDevice, depthStencil->image, &memReqs);
 	mAlloc.allocationSize = memReqs.size;
 	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mAlloc.memoryTypeIndex);
 	error = vkAllocateMemory(logicalDevice, &mAlloc, nullptr, &depthStencil->mem);
-	Assert(error == VK_SUCCESS, "could not allocate memory on device");
+	Assert(error, "could not allocate memory on device");
 
 	error = vkBindImageMemory(logicalDevice, depthStencil->image, depthStencil->mem, 0);
-	Assert(error == VK_SUCCESS, "could not bind image to memory");
+	Assert(error, "could not bind image to memory");
 
 
 	SetImageLayout(setupCmdBuffer, 
@@ -913,7 +941,7 @@ void setupDepthStencil(VkDevice logicalDevice,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 	depthStencilView.image = depthStencil->image;
 	error = vkCreateImageView(logicalDevice, &depthStencilView, nullptr, &depthStencil->view);
-	Assert(error == VK_SUCCESS, "could not create image view");
+	Assert(error, "could not create image view");
 }
 
 VkRenderPass NewRenderPass(VkDevice logicalDevice, VkFormat surfaceColorFormat, VkFormat depthFormat)
@@ -969,7 +997,7 @@ VkRenderPass NewRenderPass(VkDevice logicalDevice, VkFormat surfaceColorFormat, 
 
 	VkRenderPass rp;
 	VkResult error = vkCreateRenderPass(logicalDevice, &rpInfo, nullptr, &rp);
-	Assert(error == VK_SUCCESS, "could not create renderpass");
+	Assert(error, "could not create renderpass");
 	return rp;
 }
 
@@ -979,7 +1007,7 @@ VkPipelineCache NewPipelineCache(VkDevice logicalDevice)
 	VkPipelineCacheCreateInfo plcInfo = {};
 	plcInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 	VkResult error = vkCreatePipelineCache(logicalDevice, &plcInfo, nullptr, &plCache);
-	Assert(error == VK_SUCCESS, "could not create pipeline cache");
+	Assert(error, "could not create pipeline cache");
 	return plCache;
 }
 
@@ -1008,7 +1036,7 @@ std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
 	{
 		attach[0] = surfaceBuffers[i].view;
 		error = vkCreateFramebuffer(logicalDevice, &fbInfo, nullptr, &frameBuffers[i]);
-		Assert(error == VK_SUCCESS, "could not create frame buffer");
+		Assert(error, "could not create frame buffer");
 
 	}
 	return frameBuffers;
@@ -1020,7 +1048,7 @@ void FlushSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool, VkCo
 	if (setupCmdBuffer == nullptr)
 		return;
 	error = vkEndCommandBuffer(*setupCmdBuffer);
-	Assert(error == VK_SUCCESS, "could not end setup command buffer");
+	Assert(error, "could not end setup command buffer");
 
 	VkSubmitInfo sInfo = {};
 	sInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1028,27 +1056,161 @@ void FlushSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool, VkCo
 	sInfo.pCommandBuffers = setupCmdBuffer;
 
 	error = vkQueueSubmit(queue, 1, &sInfo, nullptr);
-	Assert(error == VK_SUCCESS, "could not submit queue to setup cmd buffer");
+	Assert(error, "could not submit queue to setup cmd buffer");
 
 	error = vkQueueWaitIdle(queue);
-	Assert(error == VK_SUCCESS, "wait idle failed for setupcmdbuffer");
+	Assert(error, "wait idle failed for setupcmdbuffer");
 
 	vkFreeCommandBuffers(logicalDevice, cmdPool, 1, setupCmdBuffer);
 	setupCmdBuffer = nullptr;
 }
 
-void prepareVertexData(VkDevice logicalDevice, VkCommandPool cmdPool, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices)
+VkBuffer NewBuffer(VkDevice logicalDevice, uint32_t bufferSize, VkBufferUsageFlags usageBits)
 {
-	size_t vertexBufferSize = vertices->size() * sizeof(Vertex);
-	size_t indexBufferSize = indices->size() * sizeof(uint32_t);
+	VkBuffer buffer;
+	VkBufferCreateInfo bInfo = {};
+	bInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bInfo.size = bufferSize;
+	bInfo.usage = usageBits;
+	VkResult error = vkCreateBuffer(logicalDevice, &bInfo, nullptr, &buffer);
+	Assert(error == VK_SUCCESS, "could not create buffer");
+	return buffer;
 
-	VkMemoryAllocateInfo mAlloc = {};
-	mAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	VkMemoryRequirements memReqs;
+}
 
-	void* data;
+StagingBuffer AllocBindDataToGPU(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t dataSize, void* dataTobind, VkBuffer* buffer, VkDeviceMemory* memory)
+{
+	VkMemoryRequirements memReqs; //no stype
+	VkMemoryAllocateInfo maInfo= {};
+	maInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	StagingBuffer stagingBuffer;
+	void* destPointer;
+
+	stagingBuffer.buffer = NewBuffer(logicalDevice, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	vkGetBufferMemoryRequirements(logicalDevice, stagingBuffer.buffer, &memReqs);
+	maInfo.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &maInfo.memoryTypeIndex);
+	VkResult error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &stagingBuffer.memory);
+	Assert(error, "could not allocate memory in allocbinddatatogpu");
+	//map and copy
+	error = vkMapMemory(logicalDevice, stagingBuffer.memory, 0, maInfo.allocationSize, 0, &destPointer);
+	Assert(error, "could not map memory in allocbinddatatogpu");
+	memcpy(destPointer, dataTobind, dataSize);
+	vkUnmapMemory(logicalDevice, stagingBuffer.memory);
+	error = vkBindBufferMemory(logicalDevice, stagingBuffer.buffer, stagingBuffer.memory, 0);
+	Assert(error, "could not bind memory in allocbinddatatogpu");
+
+	vkGetBufferMemoryRequirements(logicalDevice, *buffer, &memReqs);
+	maInfo.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &maInfo.memoryTypeIndex);
+	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, memory);
+	Assert(error, "could not allocate memory in allocbinddatatogpu");
+	error = vkBindBufferMemory(logicalDevice, *buffer, *memory, 0);
+	Assert(error, "could not bind memory in allocbinddatatogpu");
+
+	return stagingBuffer;
+}
+
+void PrepareVertexData(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties memoryProperties, VkQueue queue, VkCommandPool cmdPool, VertexBuffer* vertexBuffer)
+{
+	size_t vertexBufferSize = vertexBuffer->vPos.size() * sizeof(Vertex);
+	size_t indexBufferSize = vertexBuffer->iPos.size() * sizeof(uint32_t);
+
+	StagingBuffers stagingBuffers;
 
 	VkCommandBuffer copyCommandBuffer = NewCommandBuffer(logicalDevice, cmdPool);
+	vertexBuffer->vBuffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	vertexBuffer->iBuffer = NewBuffer(logicalDevice, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	
+	stagingBuffers.vertices = AllocBindDataToGPU(logicalDevice, memoryProperties, vertexBufferSize, vertexBuffer->vPos.data(), &vertexBuffer->vBuffer, &vertexBuffer->vMemory);
+	stagingBuffers.indices = AllocBindDataToGPU(logicalDevice, memoryProperties, indexBufferSize, vertexBuffer->iPos.data(), &vertexBuffer->iBuffer, &vertexBuffer->iMemory);
+
+	VkCommandBufferBeginInfo cbbInfo = {};
+	cbbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	VkBufferCopy copyRegion = {};
+	VkResult error = vkBeginCommandBuffer(copyCommandBuffer, &cbbInfo);
+	Assert(error, "could not begin copy cmd buffer for vertex data");
+	copyRegion.size = vertexBufferSize;
+
+	vkCmdCopyBuffer(copyCommandBuffer, stagingBuffers.vertices.buffer, vertexBuffer->vBuffer, 1, &copyRegion);
+	copyRegion.size = indexBufferSize;
+	vkCmdCopyBuffer(copyCommandBuffer, stagingBuffers.indices.buffer, vertexBuffer->iBuffer, 1, &copyRegion);
+
+	error = vkEndCommandBuffer(copyCommandBuffer);
+	Assert(error, "could not end copy cmd buffer for vertex data");
+
+	//submit copies to queue
+	VkSubmitInfo csInfo = {};
+	csInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	csInfo.commandBufferCount = 1;
+	csInfo.pCommandBuffers = &copyCommandBuffer;
+
+	error = vkQueueSubmit(queue, 1, &csInfo, nullptr);
+	Assert(error, "could not submit cmd buffer to copy data");
+	error = vkQueueWaitIdle(queue);
+	Assert(error, "wait for queue during vertex data copy failed");
+
+	//TODO sync?
+	vkDestroyBuffer(logicalDevice, stagingBuffers.vertices.buffer, nullptr);
+	vkFreeMemory(logicalDevice, stagingBuffers.vertices.memory, nullptr);
+	vkDestroyBuffer(logicalDevice, stagingBuffers.indices.buffer, nullptr);
+	vkFreeMemory(logicalDevice, stagingBuffers.indices.memory, nullptr);
+
+
+	/*//vertex buffer
+	stagingBuffers.vertices.buffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	//TODO can this be moved to a function? what would it be called?
+	vkGetBufferMemoryRequirements(logicalDevice, stagingBuffers.vertices.buffer, &memReqs);
+	maInfo.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &maInfo.memoryTypeIndex);
+	VkResult error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &stagingBuffers.vertices.memory);
+	Assert(error, "could not allocate memory for vertices");
+	//map and copy
+	//TODO function?
+	error = vkMapMemory(logicalDevice, stagingBuffers.vertices.memory, 0, maInfo.allocationSize, 0, &data);
+	Assert(error, "could not map memory for vertices");
+	memcpy(data, vertices->data(), vertexBufferSize);
+	vkUnmapMemory(logicalDevice, stagingBuffers.vertices.memory);
+	error = vkBindBufferMemory(logicalDevice, stagingBuffers.vertices.buffer, stagingBuffers.vertices.memory, 0);
+	Assert(error, "could not bind memory for vertices");
+
+	vertexBuffer->vBuffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer->vBuffer, &memReqs);
+	maInfo.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &maInfo.memoryTypeIndex);
+	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &vertexBuffer->vMemory);
+	Assert(error, "could not allocate memory for vertex buffer memory");
+	error = vkBindBufferMemory(logicalDevice, vertexBuffer->vBuffer, vertexBuffer->vMemory, 0);
+	Assert(error, "could not bind memory for vertex buffer memory");
+
+	//index buffer
+	stagingBuffers.indices.buffer = NewBuffer(logicalDevice, indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	//TODO can this be moved to a function? what would it be called?
+	vkGetBufferMemoryRequirements(logicalDevice, stagingBuffers.indices.buffer, &memReqs);
+	maInfo.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &maInfo.memoryTypeIndex);
+	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &stagingBuffers.indices.memory);
+	Assert(error, "could not allocate memory for vertices");
+	//map and copy
+	//TODO function?
+	error = vkMapMemory(logicalDevice, stagingBuffers.indices.memory, 0, maInfo.allocationSize, 0, &data);
+	Assert(error, "could not map memory for indices");
+	memcpy(data, indices->data(), indexBufferSize);
+	vkUnmapMemory(logicalDevice, stagingBuffers.indices.memory);
+	error = vkBindBufferMemory(logicalDevice, stagingBuffers.indices.buffer, stagingBuffers.indices.memory, 0);
+	Assert(error, "could not bind memory for indices");
+
+	vertexBuffer->vBuffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer->vBuffer, &memReqs);
+	maInfo.allocationSize = memReqs.size;
+	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &maInfo.memoryTypeIndex);
+	error = vkAllocateMemory(logicalDevice, &maInfo, nullptr, &vertexBuffer->vMemory);
+	Assert(error, "could not allocate memory for index buffer memory");
+	error = vkBindBufferMemory(logicalDevice, vertexBuffer->vBuffer, vertexBuffer->vMemory, 0);
+	Assert(error, "could not bind memory for index buffer memory");
+	*/
+
 
 
 
@@ -1064,6 +1226,7 @@ void Init(MainMemory* m)
     m->clientHeight = 800;
 
     m->windowHandle = NewWindow(m, m->clientWidth, m->clientHeight);
+	ShowWindow(m->windowHandle, SW_HIDE);
 
 #if VALIDATION_LAYERS
 	std::vector<VkLayerProperties> layerProps = GetInstalledVkLayers();
@@ -1183,15 +1346,15 @@ void Init(MainMemory* m)
 	//TODO what are tilings?
 	m->textureCmdBuffer = NewCommandBuffer(m->logicalDevice, m->cmdPool);
 
-	m->vertices =
+	m->vertexBuffer.vPos =
 	{
 		{{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},
 		{ { -1.0f, 1.0f, 0.0f },{ 0.0f, 1.0f, 0.0f } },
 		{ { 0.0f, -1.0f, 0.0f },{ 0.0f, 0.0f, 1.0f } }
 	};
-	m->indices = { 0, 1, 2 };
-	m->indexBuffer.count = 3;
-
+	m->vertexBuffer.iPos = { 0, 1, 2 };
+	m->vertexBuffer.iCount = 3;
+	PrepareVertexData(m->logicalDevice, m->memoryProperties, m->queue, m->cmdPool, &m->vertexBuffer);
 
 
 }
@@ -1220,10 +1383,7 @@ void Quit(MainMemory* mainMemory)
     DestroyDebugReportCallbackEXT(mainMemory->vkInstance, mainMemory->debugReport, nullptr);
 #endif
 }
-void foo(std::vector<int> values)
-{
-	values[0] = 2;
-}
+
 //app entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
 int main(int argv, char** argc)
 {
