@@ -216,39 +216,27 @@ static void SetImageLayout(VkCommandBuffer cmdBuffer,
 		1, &imageMemoryBarrier);
 }
 
-//TODO this function is a little rediculous, simplify into smaller functions or something?
-void InitSwapChain(
-	/*VkDevice logicalDevice,
-	VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface,
-	VkFormat imageFormat,
-	VkColorSpaceKHR colorSpace,
-	*/
-	MainMemory* m,
-	uint32_t* width,
-	uint32_t* height)
+
+static VkSurfaceCapabilitiesKHR GetSurfaceCaps(VkPhysicalDevice physDevice, VkSurfaceKHR surface)
 {
-	//TODO parts of this function could be moved to other functions to improve the flow of initialization?
-	//specifically move the use of the function extensions into a single function?
-	VkResult error;
-	VkSwapchainKHR swapChain;
-
-	//after logical device creation we can retrieve function pointers associated with it
-	GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, CreateSwapchainKHR);
-	GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, DestroySwapchainKHR);
-	GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, GetSwapchainImagesKHR);
-	GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, AcquireNextImageKHR);
-	GET_VULKAN_FUNCTION_POINTER_DEV(m->logicalDevice, QueuePresentKHR);
-
 	VkSurfaceCapabilitiesKHR surfaceCaps;
-	error = GetPhysicalDeviceSurfaceCapabilitiesKHR(m->physicalDevice,
-		m->surface,
+	VkResult error;
+	error = GetPhysicalDeviceSurfaceCapabilitiesKHR(physDevice,
+		surface,
 		&surfaceCaps);
 	Assert(error, "could not get surface capabilities, the function is probably null?");
+	return surfaceCaps;
+
+}
+
+static std::vector<VkPresentModeKHR> GetPresentModes(VkPhysicalDevice physDevice, VkSurfaceKHR surface)
+{
 
 	uint32_t presentModeCount;
-	error = GetPhysicalDeviceSurfacePresentModesKHR(m->physicalDevice,
-		m->surface,
+	VkResult error;
+
+	error = GetPhysicalDeviceSurfacePresentModesKHR(physDevice,
+		surface,
 		&presentModeCount,
 		nullptr);
 	Assert(error, "could not get surface present modes");
@@ -257,28 +245,55 @@ void InitSwapChain(
 	std::vector<VkPresentModeKHR> presentModes(presentModeCount);
 
 
-	error = GetPhysicalDeviceSurfacePresentModesKHR(m->physicalDevice,
-		m->surface,
+	error = GetPhysicalDeviceSurfacePresentModesKHR(physDevice,
+		surface,
 		&presentModeCount,
 		presentModes.data());
 	Assert(error, "could not get the present Modes");
+	return presentModes;
 
-	VkExtent2D swapChainExtent = {};
+}
+
+
+void InitSwapChain(
+	DeviceInfo* deviceInfo,
+	VkPhysicalDevice physDevice,
+	SurfaceInfo* surfaceInfo,
+	uint32_t* width,
+	uint32_t* height)
+{
+	//TODO parts of this function could be moved to other functions to improve the flow of initialization?
+	//specifically move the use of the function extensions into a single function?
+	VkResult error;
+
+
+	//after logical device creation we can retrieve function pointers associated with it
+	GET_VULKAN_FUNCTION_POINTER_DEV(deviceInfo->device, CreateSwapchainKHR);
+	GET_VULKAN_FUNCTION_POINTER_DEV(deviceInfo->device, DestroySwapchainKHR);
+	GET_VULKAN_FUNCTION_POINTER_DEV(deviceInfo->device, GetSwapchainImagesKHR);
+	GET_VULKAN_FUNCTION_POINTER_DEV(deviceInfo->device, AcquireNextImageKHR);
+	GET_VULKAN_FUNCTION_POINTER_DEV(deviceInfo->device, QueuePresentKHR);
+
+	VkSurfaceCapabilitiesKHR surfaceCaps = GetSurfaceCaps(physDevice, surfaceInfo->surface);
+	std::vector<VkPresentModeKHR> presentModes = GetPresentModes(physDevice, surfaceInfo->surface);
+
+
+	VkExtent2D surfaceExtant = {};
 	//width and height are either both -1, or both not -1
 	if (surfaceCaps.currentExtent.width == -1)
 	{
-		swapChainExtent.width = *width;
-		swapChainExtent.height = *height;
+		surfaceExtant.width = *width;
+		surfaceExtant.height = *height;
 	}
 	else
 	{
-		swapChainExtent = surfaceCaps.currentExtent;
+		surfaceExtant = surfaceCaps.currentExtent;
 		*width = surfaceCaps.currentExtent.width;
 		*height = surfaceCaps.currentExtent.height;
 	}
 
 	VkPresentModeKHR swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-	for (size_t i = 0; i < presentModeCount; i++)
+	for (size_t i = 0; i < presentModes.size(); i++)
 	{
 		if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
 		{
@@ -293,7 +308,6 @@ void InitSwapChain(
 	}
 
 	//determine the number of images
-	//TODO what is this???
 	uint32_t desiredNumberOfSwapChainImages = surfaceCaps.minImageCount + 1;
 	if (surfaceCaps.maxImageCount > 0 && desiredNumberOfSwapChainImages > surfaceCaps.maxImageCount)
 	{
@@ -311,11 +325,11 @@ void InitSwapChain(
 
 	VkSwapchainCreateInfoKHR swapchainCI = {};
 	swapchainCI.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	swapchainCI.surface = m->surface;
+	swapchainCI.surface = surfaceInfo->surface;
 	swapchainCI.minImageCount = desiredNumberOfSwapChainImages;
-	swapchainCI.imageFormat = m->surfaceColorFormat;
-	swapchainCI.imageColorSpace = m->surfaceColorSpace;
-	swapchainCI.imageExtent = { swapChainExtent.width, swapChainExtent.height };
+	swapchainCI.imageFormat = surfaceInfo->surfaceColorFormat;
+	swapchainCI.imageColorSpace = surfaceInfo->surfaceColorSpace;
+	swapchainCI.imageExtent = surfaceExtant;
 	swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	swapchainCI.preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform;
 	swapchainCI.imageArrayLayers = 1;
@@ -326,21 +340,22 @@ void InitSwapChain(
 	swapchainCI.clipped = VK_TRUE;
 	swapchainCI.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
-	error = CreateSwapchainKHR(m->logicalDevice, &swapchainCI, nullptr, &swapChain);
+	VkSwapchainKHR swapChain;
+	error = CreateSwapchainKHR(deviceInfo->device, &swapchainCI, nullptr, &swapChain);
 	Assert(error, "could not create a swapchain");
 
-	error = GetSwapchainImagesKHR(m->logicalDevice, swapChain, &m->surfaceImageCount, nullptr);
+	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->surfaceImageCount, nullptr);
 	Assert(error, "could not get surface image count");
-	m->surfaceImages.resize(m->surfaceImageCount);
-	m->surfaceBuffers.resize(m->surfaceImageCount);
-	error = GetSwapchainImagesKHR(m->logicalDevice, swapChain, &m->surfaceImageCount, m->surfaceImages.data());
+	surfaceInfo->surfaceImages.resize(surfaceInfo->surfaceImageCount);
+	surfaceInfo->surfaceBuffers.resize(surfaceInfo->surfaceImageCount);
+	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->surfaceImageCount, surfaceInfo->surfaceImages.data());
 	Assert(error, "could not fill surface images vector");
 
-	for (uint32_t i = 0; i < m->surfaceImageCount; i++)
+	for (uint32_t i = 0; i < surfaceInfo->surfaceImageCount; i++)
 	{
 		VkImageViewCreateInfo colorAttachmentView = {};
 		colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		colorAttachmentView.format = m->surfaceColorFormat;
+		colorAttachmentView.format = surfaceInfo->surfaceColorFormat;
 		colorAttachmentView.components = {
 			VK_COMPONENT_SWIZZLE_R,
 			VK_COMPONENT_SWIZZLE_G,
@@ -355,16 +370,16 @@ void InitSwapChain(
 		colorAttachmentView.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		colorAttachmentView.flags = 0;
 
-		m->surfaceBuffers[i].image = m->surfaceImages[i];
+		surfaceInfo->surfaceBuffers[i].image = surfaceInfo->surfaceImages[i];
 
-		SetImageLayout(m->setupCommandBuffer,
-			m->surfaceBuffers[i].image,
+		SetImageLayout(deviceInfo->setupCommandBuffer,
+			surfaceInfo->surfaceBuffers[i].image,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-		colorAttachmentView.image = m->surfaceBuffers[i].image;
-		error = vkCreateImageView(m->logicalDevice, &colorAttachmentView, nullptr, &m->surfaceBuffers[i].view);
+		colorAttachmentView.image = surfaceInfo->surfaceBuffers[i].image;
+		error = vkCreateImageView(deviceInfo->device, &colorAttachmentView, nullptr, &surfaceInfo->surfaceBuffers[i].view);
 		Assert(error, "could not create image view");
 	}
 }

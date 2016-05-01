@@ -110,21 +110,23 @@ void PrepareVertexData(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties 
 
 }
 
-void SetupCommandBuffers(VkDevice logicalDevice,
+void SetupCommandBuffers(DeviceInfo* deviceInfo,
 	std::vector<VkCommandBuffer>* drawCmdBuffers,
-	VkCommandBuffer* prePresentCmdBuffer,
-	VkCommandBuffer* postPresentCmdBuffer,
-	uint32_t swapchainImageCount,
-	VkCommandPool cmdPool)
+	uint32_t swapchainImageCount)
 {
 	drawCmdBuffers->resize(swapchainImageCount);
-	*drawCmdBuffers = NewCommandBuffer(logicalDevice, cmdPool, swapchainImageCount);
-	*prePresentCmdBuffer = NewCommandBuffer(logicalDevice, cmdPool);
-	*postPresentCmdBuffer = NewCommandBuffer(logicalDevice, cmdPool);
-
+	*drawCmdBuffers = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool, swapchainImageCount);
+	deviceInfo->prePresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
+	deviceInfo->postPresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
 }
 
-void PrepareCameraBuffers(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties memoryProperties, Camera* camera, uint32_t width, uint32_t height, float zoom, glm::vec3 rotation)
+void PrepareCameraBuffers(VkDevice logicalDevice, 
+	VkPhysicalDeviceMemoryProperties memoryProperties,
+	Camera* camera,
+	uint32_t width, 
+	uint32_t height, 
+	float zoom, 
+	glm::vec3 rotation)
 {
 	camera->buffer = NewBuffer(logicalDevice, sizeof(CameraPosition), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	VkMemoryAllocateInfo aInfo = NewMemoryAllocInfo(logicalDevice, memoryProperties, camera->buffer, 0, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
@@ -141,7 +143,7 @@ void PrepareCameraBuffers(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperti
 }
 
 
-VkPipeline PreparePipelines(VkDevice logicalDevice, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkPipelineVertexInputStateCreateInfo* vertexInputInfo, VkPipelineCache pipelineCache)
+VkPipeline PreparePipelines(VkDevice logicalDevice, PipelineInfo* pipelineInfo, VkPipelineVertexInputStateCreateInfo* vertexInputInfo)
 {
 
 	VkResult error;
@@ -215,8 +217,8 @@ VkPipeline PreparePipelines(VkDevice logicalDevice, VkPipelineLayout pipelineLay
 
 	VkGraphicsPipelineCreateInfo pInfo = {};
 	pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pInfo.layout = pipelineLayout;
-	pInfo.renderPass = renderPass;
+	pInfo.layout = pipelineInfo->pipelineLayout;
+	pInfo.renderPass = pipelineInfo->renderPass;
 	pInfo.stageCount = 2;
 	pInfo.pVertexInputState = vertexInputInfo;
 	pInfo.pInputAssemblyState = &iaInfo;
@@ -229,9 +231,100 @@ VkPipeline PreparePipelines(VkDevice logicalDevice, VkPipelineLayout pipelineLay
 	pInfo.pDynamicState = &dInfo;
 
 	VkPipeline pipeline;
-	error = vkCreateGraphicsPipelines(logicalDevice, pipelineCache, 1, &pInfo, nullptr, &pipeline);
+	error = vkCreateGraphicsPipelines(logicalDevice, pipelineInfo->pipelineCache, 1, &pInfo, nullptr, &pipeline);
 	Assert(error, "could not create pipeline");
 	return pipeline;
+}
+
+VkDescriptorPool PrepareDescriptorPool(VkDevice logicalDevice)
+{
+	VkDescriptorPoolSize typeCount[1];
+	typeCount[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	typeCount[0].descriptorCount = 1;
+
+	VkDescriptorPoolCreateInfo dpInfo = {};
+	dpInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	dpInfo.poolSizeCount = 1;
+	dpInfo.pPoolSizes = typeCount;
+	dpInfo.maxSets = 1;
+	VkDescriptorPool descriptorPool;
+	VkResult error = vkCreateDescriptorPool(logicalDevice, &dpInfo, nullptr, &descriptorPool);
+	Assert(error, "could not create descriptor pool");
+	return descriptorPool;
+
+}
+
+void PrepareDescriptorSet(VkDevice logicalDevice, PipelineInfo* pipelineInfo, VkDescriptorBufferInfo uniformBufferInfo)
+{
+
+	VkDescriptorSetAllocateInfo dsInfo = {};
+	dsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	dsInfo.descriptorPool = pipelineInfo->descriptorPool;
+	dsInfo.descriptorSetCount = 1;
+	dsInfo.pSetLayouts = &pipelineInfo->descriptorSetLayout;
+	VkDescriptorSet descriptorSet;
+	VkResult error = vkAllocateDescriptorSets(logicalDevice, &dsInfo, &descriptorSet);
+	Assert(error, "could not allocate descriptor set");
+
+	//binding 0: uniform buffer
+	VkWriteDescriptorSet wdSet = {};
+	wdSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	wdSet.dstSet = descriptorSet;
+	wdSet.descriptorCount = 1;
+	wdSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	wdSet.pBufferInfo = &uniformBufferInfo;
+	wdSet.dstBinding = 0;
+	vkUpdateDescriptorSets(logicalDevice, 1, &wdSet, 0, nullptr);
+
+}
+
+void BuildCmdBuffers(DeviceInfo* deviceInfo, PipelineInfo* pipelineInfo, VkDescriptorSet descriptorSet, uint32_t width, uint32_t height)
+{
+	VkCommandBufferBeginInfo cbInfo = {};
+	cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	
+	VkClearValue clearVals[2] = {};
+	clearVals[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+	clearVals[1].depthStencil = {1.0f, 0};
+
+	VkRenderPassBeginInfo rbInfo = {};
+	rbInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	rbInfo.renderPass = pipelineInfo->renderPass;
+	rbInfo.renderArea.offset = {0, 0};
+	rbInfo.renderArea.extent = {width, height};
+	rbInfo.clearValueCount = 2;
+	rbInfo.pClearValues = clearVals;
+
+	VkResult error;
+	for (uint32_t i = 0; i < deviceInfo->drawCmdBuffers.size(); i++)
+	{
+		VkFramebuffer currFrame = deviceInfo->frameBuffers[i];
+		VkCommandBuffer currCmd = deviceInfo->drawCmdBuffers[i];
+
+		rbInfo.framebuffer = currFrame;
+
+		error = vkBeginCommandBuffer(currCmd, &cbInfo);
+		Assert(error, "could not begin command buffer");
+
+		vkCmdBeginRenderPass(currCmd, &rbInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		//update dynamic states
+		VkViewport vp = {};
+		vp.height = (float)height;
+		vp.width = (float)width;
+		vp.minDepth = 0.0f;
+		vp.maxDepth = 1.0f;
+		vkCmdSetViewport(currCmd, 0, 1, &vp);
+
+		VkRect2D scissor = {};
+		scissor.extent = { width, height };
+		scissor.offset = { 0, 0 };
+		vkCmdSetScissor(currCmd, 0, 1, &scissor);
+
+		//bind descriptor sets describing shader bind points
+		vkCmdBindDescriptorSets(currCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineInfo->pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+	}
+
 }
 
 void Init(MainMemory* m)
@@ -244,65 +337,59 @@ void Init(MainMemory* m)
     m->clientHeight = 800;
 
     m->windowHandle = NewWindow(EXE_NAME, m, m->clientWidth, m->clientHeight);
-	ShowWindow(m->windowHandle, SW_HIDE);
+	//ShowWindow(m->windowHandle, SW_HIDE);
 
 #if VALIDATION_LAYERS
 	std::vector<VkLayerProperties> layerProps = GetInstalledVkLayers();
 	for (uint32_t i = 0; i < layerProps.size(); i++)
 	{
-		m->instanceLayerList.push_back(layerProps[i].layerName);
+		m->debugInfo.instanceLayerList.push_back(layerProps[i].layerName);
 	}
 #endif
 
-	m->instanceExtList.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-	m->instanceExtList.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+	m->debugInfo.instanceExtList.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+	m->debugInfo.instanceExtList.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #if VALIDATION_LAYERS
-	m->instanceExtList.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+	m->debugInfo.instanceExtList.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 #endif
 
-    m->vkInstance = NewVkInstance(EXE_NAME, m->instanceLayerList, m->instanceExtList);
-    m->surface = NewSurface(m->windowHandle, m->exeHandle, m->vkInstance);
-
-
-
-#if VALIDATION_LAYERS
-
-#endif
+    m->vkInstance = NewVkInstance(EXE_NAME, m->debugInfo->instanceLayerList, m->debugInfo->instanceExtList);
+    m->surfaceInfo.surface = NewSurface(m->windowHandle, m->exeHandle, m->vkInstance);
 
 
     uint32_t gpuCount;
     std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(m->vkInstance, &gpuCount);
-    m->physicalDevice = physicalDevices[0];
+    m->physDeviceInfo.physicalDevice = physicalDevices[0];
 
     //see what the gpu is capable of
     //NOTE not actually used in other code
-    vkGetPhysicalDeviceFeatures(m->physicalDevice, &m->deviceFeatures);
+    vkGetPhysicalDeviceFeatures(m->physDeviceInfo.physicalDevice, &m->physDeviceInfo.deviceFeatures);
 
-    vkGetPhysicalDeviceMemoryProperties(m->physicalDevice, &m->memoryProperties);
+    vkGetPhysicalDeviceMemoryProperties(m->physDeviceInfo.physicalDevice, &m->physDeviceInfo.memoryProperties);
 
-    m->renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(m->physicalDevice, m->surface);
+    m->physDeviceInfo.renderingQueueFamilyIndex = FindGraphicsQueueFamilyIndex(m->physDeviceInfo.physicalDevice, m->surfaceInfo.surface);
 
 #if VALIDATION_LAYERS
-    std::vector<VkLayerProperties> layerPropsDevice = GetInstalledVkLayers(m->physicalDevice);
+    std::vector<VkLayerProperties> layerPropsDevice = GetInstalledVkLayers(m->physDeviceInfo.physicalDevice);
     for (uint32_t i = 0; i < layerPropsDevice.size(); i++)
     {
-        m->deviceLayerList.push_back(layerPropsDevice[i].layerName);
+        m->debugInfo.deviceLayerList.push_back(layerPropsDevice[i].layerName);
 
     }
 #endif
-    m->logicalDevice = NewLogicalDevice(m->physicalDevice, m->renderingQueueFamilyIndex, m->deviceLayerList, m->deviceExtList);
-    vkGetDeviceQueue(m->logicalDevice, m->renderingQueueFamilyIndex, 0, &m->queue);
-    m->supportedDepthFormat = GetSupportedDepthFormat(m->physicalDevice);
+    m->deviceInfo.device = NewLogicalDevice(m->physDeviceInfo.physicalDevice, m->physDeviceInfo.renderingQueueFamilyIndex, m->debugInfo.deviceLayerList, m->debugInfo.deviceExtList);
+    vkGetDeviceQueue(m->deviceInfo.device, m->physDeviceInfo.renderingQueueFamilyIndex, 0, &m->deviceInfo.queue);
+    m->physDeviceInfo.supportedDepthFormat = GetSupportedDepthFormat(m->physDeviceInfo.physicalDevice);
 
-    m->presentComplete = NewSemaphore(m->logicalDevice);
-    m->renderComplete = NewSemaphore(m->logicalDevice);
+    m->deviceInfo.presentComplete = NewSemaphore(m->deviceInfo.device);
+    m->deviceInfo.renderComplete = NewSemaphore(m->deviceInfo.device);
 
     m->submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     m->submitInfo.pWaitDstStageMask = (VkPipelineStageFlags*)VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
     m->submitInfo.waitSemaphoreCount = 1;
-    m->submitInfo.pWaitSemaphores = &m->presentComplete;
+    m->submitInfo.pWaitSemaphores = &m->deviceInfo.presentComplete;
     m->submitInfo.signalSemaphoreCount = 1;
-    m->submitInfo.pSignalSemaphores = &m->renderComplete;
+    m->submitInfo.pSignalSemaphores = &m->deviceInfo.renderComplete;
 
 
     GetSurfaceColorSpaceAndFormat(m->physicalDevice,
@@ -347,7 +434,7 @@ void Init(MainMemory* m)
 
 	m->vertexBuffer.vPos =
 	{
-		{{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+		{ { 1.0f, 1.0f, 0.0f  },{ 1.0f, 0.0f, 0.0f } },
 		{ { -1.0f, 1.0f, 0.0f },{ 0.0f, 1.0f, 0.0f } },
 		{ { 0.0f, -1.0f, 0.0f },{ 0.0f, 0.0f, 1.0f } }
 	};
@@ -358,8 +445,8 @@ void Init(MainMemory* m)
 	m->descriptorSetlayout = NewDescriptorSetLayout(m->logicalDevice, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
 	m->pipelineLayout = NewPipelineLayout(m->logicalDevice, m->descriptorSetlayout);
 	m->pipeline = PreparePipelines(m->logicalDevice, m->pipelineLayout, m->renderPass, &m->vertexBuffer.viInfo, m->pipelineCache);
-
-
+	m->descriptorPool = PrepareDescriptorPool(m->logicalDevice);
+	PrepareDescriptorSet(m->logicalDevice, m->descriptorPool, m->descriptorSetlayout, m->camera.desc);
 
 }
 

@@ -86,8 +86,8 @@ VkInstance NewVkInstance(const char* appName, std::vector<const char*> instanceL
 
 void DestroyInstance(VkInstance vkInstance, VkDebugReportCallbackEXT debugReport)
 {
-	DestroyDebugReportCallbackEXT(vkInstance, debugReport, nullptr);
-	vkDestroyInstance(vkInstance, nullptr);
+	//DestroyDebugReportCallbackEXT(vkInstance, debugReport, nullptr);
+	//vkDestroyInstance(vkInstance, nullptr);
 }
 void DestroyInstance(VkInstance vkInstance)
 {
@@ -191,13 +191,13 @@ VkSemaphore NewSemaphore(VkDevice logicalDevice)
 
 
 
-VkCommandPool NewCommandPool(uint32_t renderingAndPresentingIndex, VkDevice logicalDevice)
+VkCommandPool NewCommandPool(VkDevice logicalDevice, uint32_t queueFamilyIndex)
 {
 	VkResult error;
 	VkCommandPool pool;
 	VkCommandPoolCreateInfo poolInfo = {};
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.queueFamilyIndex = renderingAndPresentingIndex;
+	poolInfo.queueFamilyIndex = queueFamilyIndex;
 	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	error = vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &pool);
 	Assert(error, "could not create command pool.");
@@ -478,7 +478,7 @@ void GetMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t t
 
 }
 
-
+//TODO tidy up this function?
 void setupDepthStencil(VkDevice logicalDevice,
 	DepthStencil* depthStencil,
 	VkFormat depthFormat,
@@ -634,28 +634,28 @@ std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
 	return frameBuffers;
 }
 
-void FlushSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool, VkCommandBuffer* setupCmdBuffer, VkQueue queue)
+void FlushSetupCommandBuffer(DeviceInfo* deviceInfo)
 {
 	VkResult error;
-	if (setupCmdBuffer == nullptr)
+	if (deviceInfo->setupCmdBuffer == nullptr)
 		return;
-	error = vkEndCommandBuffer(*setupCmdBuffer);
+	error = vkEndCommandBuffer(deviceInfo->setupCmdBuffer);
 	Assert(error, "could not end setup command buffer");
 
 	VkSubmitInfo sInfo = {};
 	sInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	sInfo.commandBufferCount = 1;
-	sInfo.pCommandBuffers = setupCmdBuffer;
+	sInfo.pCommandBuffers = &deviceInfo->setupCmdBuffer;
 
-	error = vkQueueSubmit(queue, 1, &sInfo, nullptr);
+	error = vkQueueSubmit(deviceInfo->queue, 1, &sInfo, nullptr);
 	Assert(error, "could not submit queue to setup cmd buffer");
 
-	error = vkQueueWaitIdle(queue);
+	error = vkQueueWaitIdle(deviceInfo->queue);
 	Assert(error, "wait idle failed for setupcmdbuffer");
 
-	vkFreeCommandBuffers(logicalDevice, cmdPool, 1, setupCmdBuffer);
+	vkFreeCommandBuffers(deviceInfo->device, deviceInfo->cmdPool, 1, &deviceInfo->setupCmdBuffer);
 	// ReSharper disable once CppAssignedValueIsNeverUsed
-	setupCmdBuffer = nullptr;
+	deviceInfo->setupCmdBuffer = nullptr;
 }
 
 VkBuffer NewBuffer(VkDevice logicalDevice, uint32_t bufferSize, VkBufferUsageFlags usageBits)
@@ -670,6 +670,7 @@ VkBuffer NewBuffer(VkDevice logicalDevice, uint32_t bufferSize, VkBufferUsageFla
 	return buffer;
 
 }
+
 
 StagingBuffer AllocBindDataToGPU(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t dataSize, void* dataTobind, VkBuffer* buffer, VkDeviceMemory* memory)
 {

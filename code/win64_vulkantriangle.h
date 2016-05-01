@@ -6,6 +6,7 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include "commonvulkan.h"
+#include "surface.h"
 
 static const char* EXE_NAME = "VulkanTriangle";
 static const uint32_t VERTEX_BUFFER_BIND_ID = 0;
@@ -64,60 +65,37 @@ struct MainMemory
 	HWND consoleHandle;
 	HWND windowHandle;
 	HINSTANCE exeHandle;
-
 	uint32_t clientWidth, clientHeight;
 
 	bool running;
 
 	VkInstance vkInstance;
 
-	VkSurfaceKHR surface;
-	VkColorSpaceKHR surfaceColorSpace;
-	VkFormat surfaceColorFormat;
-	uint32_t surfaceImageCount;
-	std::vector<VkImage> surfaceImages;
-	std::vector<SwapChainBuffer> surfaceBuffers;
+	SurfaceInfo surfaceInfo;
 
-	VkPhysicalDevice physicalDevice;
+	PhysDeviceInfo physDeviceInfo;
 
-	uint32_t renderingQueueFamilyIndex;
-	VkFormat supportedDepthFormat;
-	VkPhysicalDeviceFeatures deviceFeatures;
-	VkPhysicalDeviceMemoryProperties memoryProperties;
+	DebugInfo debugInfo;
 
-	std::vector<const char*> instanceLayerList;
-	std::vector<const char*> instanceExtList;
-	std::vector<const char*> deviceLayerList;
-	std::vector<const char*> deviceExtList;
-	VkDebugReportCallbackEXT debugReport;
+	DeviceInfo deviceInfo;
 
-	VkDevice logicalDevice;
-	VkQueue queue;
-	VkCommandPool cmdPool;
-
-	VkSemaphore presentComplete;
-	VkSemaphore renderComplete;
 
 	//TODO better name?
 	VkSubmitInfo submitInfo;
 
-	VkCommandBuffer setupCommandBuffer;
-	std::vector<VkCommandBuffer> drawCmdBuffers;
-	VkCommandBuffer prePresentCmdBuffer;
-	VkCommandBuffer	postPresentCmdBuffer;
+
+
+
 
 	DepthStencil depthStencil;
 
-	VkRenderPass renderPass;
-	VkPipelineCache pipelineCache;
-	std::vector<VkFramebuffer> frameBuffers;
+
 
 	VkCommandBuffer textureCmdBuffer;
 	VertexBuffer vertexBuffer;
 
 	Camera camera;
-	VkDescriptorSetLayout descriptorSetlayout;
-	VkPipelineLayout pipelineLayout;
-	VkPipeline pipeline;
+	PipelineInfo pipelineInfo;
+
 
 };

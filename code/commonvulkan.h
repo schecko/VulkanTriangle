@@ -3,12 +3,9 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
+#include "surface.h""
 
-struct SwapChainBuffer
-{
-	VkImage image;
-	VkImageView view;
-};
+
 
 //TODO dont really know
 //TODO rename?
@@ -30,6 +27,52 @@ struct StagingBuffers
 {
 	StagingBuffer vertices;
 	StagingBuffer indices;
+};
+
+
+struct PhysDeviceInfo
+{
+	VkPhysicalDevice physicalDevice;
+	uint32_t renderingQueueFamilyIndex;
+	VkFormat supportedDepthFormat;
+	VkPhysicalDeviceFeatures deviceFeatures;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+};
+
+struct DeviceInfo
+{
+	VkDevice device;
+	VkQueue queue;
+	VkCommandPool cmdPool;
+
+	VkSemaphore presentComplete;
+	VkSemaphore renderComplete;
+
+	VkCommandBuffer setupCmdBuffer;
+	VkCommandBuffer prePresentCmdBuffer;
+	VkCommandBuffer	postPresentCmdBuffer;
+
+	std::vector<VkCommandBuffer> drawCmdBuffers;
+	std::vector<VkFramebuffer> frameBuffers;
+};
+
+struct PipelineInfo
+{
+	VkRenderPass renderPass;
+	VkPipelineCache pipelineCache;
+	VkDescriptorSetLayout descriptorSetLayout;
+	VkPipelineLayout pipelineLayout;
+	VkDescriptorPool descriptorPool;
+	VkPipeline pipeline;
+};
+
+struct DebugInfo
+{
+	std::vector<const char*> instanceLayerList;
+	std::vector<const char*> instanceExtList;
+	std::vector<const char*> deviceLayerList;
+	std::vector<const char*> deviceExtList;
+	VkDebugReportCallbackEXT debugReport;
 };
 
 
