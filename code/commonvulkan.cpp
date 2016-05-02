@@ -11,6 +11,72 @@ PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT = nullptr;
 PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallbackEXT = nullptr;
 
 
+
+void CreateDebugCallback(VkInstance vkInstance, VkDebugReportCallbackEXT* debugReport)
+{
+	VkDebugReportCallbackCreateInfoEXT debugCreateInfo = {};
+	debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
+	debugCreateInfo.pfnCallback = VkDebugCallback;
+	debugCreateInfo.flags = VK_DEBUG_REPORT_INFORMATION_BIT_EXT |
+		VK_DEBUG_REPORT_WARNING_BIT_EXT |
+		VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
+		VK_DEBUG_REPORT_ERROR_BIT_EXT |
+		VK_DEBUG_REPORT_DEBUG_BIT_EXT;
+	VkResult error = CreateDebugReportCallbackEXT(vkInstance, &debugCreateInfo, nullptr, debugReport);
+	Assert(error == VK_SUCCESS, "could not create vulkan error callback");
+
+}
+
+VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
+	VkDebugReportObjectTypeEXT objType,
+	uint64_t srcObj,
+	size_t location,
+	int32_t msgCode,
+	const char* layerPrefix,
+	const char* msg,
+	void* data)
+{
+	std::string reportMessage;
+	if (flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
+	{
+		reportMessage += "DEBUG: ";
+
+	}
+	if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
+	{
+		reportMessage += "WARNING: ";
+
+	}
+	if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
+	{
+		reportMessage += "PERFORMANCE WARNING: ";
+	}
+	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
+	{
+		reportMessage += "ERROR: ";
+
+	}
+	if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
+	{
+
+		reportMessage += "INFORMATION: ";
+	}
+
+	reportMessage += "@[";
+	reportMessage += layerPrefix;
+	reportMessage += "] ";
+	reportMessage += msg;
+	std::cout << reportMessage.c_str() << std::endl;
+	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
+	{
+		Assert(0, "error in VK");
+		return true;
+
+	}
+
+	return false;
+}
+
 VkDescriptorSetLayout NewDescriptorSetLayout(VkDevice logicalDevice, VkDescriptorType type, VkShaderStageFlags flags)
 {
 	VkDescriptorSetLayoutBinding lBind = {};
@@ -45,7 +111,7 @@ VkPipelineLayout NewPipelineLayout(VkDevice logicalDevice, VkDescriptorSetLayout
 }
 
 
-VkInstance NewVkInstance(const char* appName, std::vector<const char*> instanceLayers, std::vector<const char*> instanceExts)
+VkInstance NewVkInstance(const char* appName, std::vector<const char*>* instanceLayers, std::vector<const char*>* instanceExts)
 {
 
 	VkResult error;
@@ -63,12 +129,12 @@ VkInstance NewVkInstance(const char* appName, std::vector<const char*> instanceL
 	instanceCreateInfo.pApplicationInfo = &appInfo;
 
 #if(VALIDATION_LAYERS)
-	instanceCreateInfo.enabledLayerCount = (uint32_t)instanceLayers.size();
-	instanceCreateInfo.ppEnabledLayerNames = instanceLayers.data();
+	instanceCreateInfo.enabledLayerCount = (uint32_t)instanceLayers->size();
+	instanceCreateInfo.ppEnabledLayerNames = instanceLayers->data();
 #endif
 
-	instanceCreateInfo.enabledExtensionCount = (uint32_t)instanceExts.size();
-	instanceCreateInfo.ppEnabledExtensionNames = instanceExts.data();
+	instanceCreateInfo.enabledExtensionCount = (uint32_t)instanceExts->size();
+	instanceCreateInfo.ppEnabledExtensionNames = instanceExts->data();
 
 
 
@@ -115,12 +181,6 @@ std::vector<VkPhysicalDevice> EnumeratePhysicalDevices(VkInstance vkInstance, ui
 
 VkDevice NewLogicalDevice(VkPhysicalDevice physicalDevice, uint32_t renderingQueueFamilyIndex, std::vector<const char*> deviceLayers, std::vector<const char*> deviceExts)
 {
-	//deviceExts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-	//deviceExts.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-#if VALIDATION_LAYERS
-	//deviceExts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-#endif
-	deviceExts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
 	float queuePriorities[1] = { 0.0f };
 	VkDeviceQueueCreateInfo queueCreateInfo = {};
@@ -186,10 +246,6 @@ VkSemaphore NewSemaphore(VkDevice logicalDevice)
 	Assert(error, "could not create semaphore");
 	return semaphore;
 }
-
-
-
-
 
 VkCommandPool NewCommandPool(VkDevice logicalDevice, uint32_t queueFamilyIndex)
 {
@@ -363,77 +419,6 @@ std::vector<VkLayerProperties> GetInstalledVkLayers(VkPhysicalDevice physicalDev
 }
 
 
-#if VALIDATION_LAYERS
-
-void createDebugCallback(VkInstance vkInstance,  VkDebugReportCallbackEXT* debugReport)
-{
-	VkDebugReportCallbackCreateInfoEXT debugCreateInfo = {};
-	debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
-	debugCreateInfo.pfnCallback = VkDebugCallback;
-	debugCreateInfo.flags = VK_DEBUG_REPORT_INFORMATION_BIT_EXT |
-		VK_DEBUG_REPORT_WARNING_BIT_EXT |
-		VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
-		VK_DEBUG_REPORT_ERROR_BIT_EXT |
-		VK_DEBUG_REPORT_DEBUG_BIT_EXT;
-	VkResult error = CreateDebugReportCallbackEXT(vkInstance, &debugCreateInfo, nullptr, debugReport);
-	Assert(error == VK_SUCCESS, "could not create vulkan error callback");
-
-}
-
-VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
-	VkDebugReportObjectTypeEXT objType,
-	uint64_t srcObj,
-	size_t location,
-	int32_t msgCode,
-	const char* layerPrefix,
-	const char* msg,
-	void* data)
-{
-	std::string reportMessage;
-	if (flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
-	{
-		reportMessage += "DEBUG: ";
-
-	}
-	if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
-	{
-		reportMessage += "WARNING: ";
-
-	}
-	if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-	{
-		reportMessage += "PERFORMANCE WARNING: ";
-	}
-	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-	{
-		reportMessage += "ERROR: ";
-
-	}
-	if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-	{
-
-		reportMessage += "INFORMATION: ";
-	}
-
-	reportMessage += "@[";
-	reportMessage += layerPrefix;
-	reportMessage += "] ";
-	reportMessage += msg;
-	std::cout << reportMessage.c_str() << std::endl;
-	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-	{
-		Assert(0, "error in VK");
-		return true;
-
-	}
-	else
-	{
-		return false;
-	}
-
-
-}
-#endif
 VkCommandBuffer NewCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool)
 {
 	VkCommandBuffer cmdBuffer;
@@ -478,61 +463,57 @@ void GetMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t t
 
 }
 
-//TODO tidy up this function?
-void setupDepthStencil(VkDevice logicalDevice,
-	DepthStencil* depthStencil,
-	VkFormat depthFormat,
+void setupDepthStencil(DeviceInfo* deviceInfo,
+	const PhysDeviceInfo* physDeviceInfo,
 	uint32_t width,
-	uint32_t height,
-	VkPhysicalDeviceMemoryProperties memoryProperties,
-	VkCommandBuffer setupCmdBuffer)
+	uint32_t height)
 {
 	VkImageCreateInfo image = {};
 	image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	image.imageType = VK_IMAGE_TYPE_2D;
-	image.format = depthFormat;
+	image.format = physDeviceInfo->supportedDepthFormat;
 	image.extent = { width, height, 1 };
 	image.mipLevels = 1;
 	image.arrayLayers = 1;
 	image.samples = VK_SAMPLE_COUNT_1_BIT;
 	image.tiling = VK_IMAGE_TILING_OPTIMAL;
-	image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
 	VkMemoryAllocateInfo mAlloc = {};
 	mAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 
-	VkImageViewCreateInfo depthStencilView = {};
-	depthStencilView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	depthStencilView.format = depthFormat;
-	depthStencilView.subresourceRange.aspectMask = /*VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT |*/ VK_IMAGE_ASPECT_COLOR_BIT; //NOTE ONLY the color bit can be set NOTHING else
-	depthStencilView.subresourceRange.baseMipLevel = 0;
-	depthStencilView.subresourceRange.levelCount = 1;
-	depthStencilView.subresourceRange.baseArrayLayer = 0;
-	depthStencilView.subresourceRange.layerCount = 1;
+	VkImageViewCreateInfo ivInfo = {};
+	ivInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	ivInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	ivInfo.format = physDeviceInfo->supportedDepthFormat;
+	ivInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT; 
+	ivInfo.subresourceRange.baseMipLevel = 0;
+	ivInfo.subresourceRange.levelCount = 1;
+	ivInfo.subresourceRange.baseArrayLayer = 0;
+	ivInfo.subresourceRange.layerCount = 1;
 
 	VkMemoryRequirements memReqs;
 	VkResult error;
 
-	error = vkCreateImage(logicalDevice, &image, nullptr, &depthStencil->image);
+	error = vkCreateImage(deviceInfo->device, &image, nullptr, &deviceInfo->depthStencil.image);
 	Assert(error, "could not create vk image");
-	vkGetImageMemoryRequirements(logicalDevice, depthStencil->image, &memReqs);
+	vkGetImageMemoryRequirements(deviceInfo->device, deviceInfo->depthStencil.image, &memReqs);
 	mAlloc.allocationSize = memReqs.size;
-	GetMemoryType(memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mAlloc.memoryTypeIndex);
-	error = vkAllocateMemory(logicalDevice, &mAlloc, nullptr, &depthStencil->mem);
+	GetMemoryType(physDeviceInfo->memoryProperties, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mAlloc.memoryTypeIndex);
+	error = vkAllocateMemory(deviceInfo->device, &mAlloc, nullptr, &deviceInfo->depthStencil.mem);
 	Assert(error, "could not allocate memory on device");
 
-	error = vkBindImageMemory(logicalDevice, depthStencil->image, depthStencil->mem, 0);
+	error = vkBindImageMemory(deviceInfo->device, deviceInfo->depthStencil.image, deviceInfo->depthStencil.mem, 0);
 	Assert(error, "could not bind image to memory");
 
 
-	SetImageLayout(setupCmdBuffer,
-		depthStencil->image,
-		VK_IMAGE_ASPECT_COLOR_BIT,
+	SetImageLayout(deviceInfo->setupCmdBuffer,
+		deviceInfo->depthStencil.image,
+		VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-	depthStencilView.image = depthStencil->image;
-	error = vkCreateImageView(logicalDevice, &depthStencilView, nullptr, &depthStencil->view);
+	ivInfo.image = deviceInfo->depthStencil.image;
+	error = vkCreateImageView(deviceInfo->device, &ivInfo, nullptr, &deviceInfo->depthStencil.view);
 	Assert(error, "could not create image view");
 }
 

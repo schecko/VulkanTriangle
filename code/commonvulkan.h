@@ -3,7 +3,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
-#include "surface.h""
+#include "surface.h"
 
 
 
@@ -35,6 +35,7 @@ struct PhysDeviceInfo
 	VkPhysicalDevice physicalDevice;
 	uint32_t renderingQueueFamilyIndex;
 	VkFormat supportedDepthFormat;
+
 	VkPhysicalDeviceFeatures deviceFeatures;
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 };
@@ -54,6 +55,8 @@ struct DeviceInfo
 
 	std::vector<VkCommandBuffer> drawCmdBuffers;
 	std::vector<VkFramebuffer> frameBuffers;
+
+	DepthStencil depthStencil; //TODO would this be better in the surfaceinfo struct?
 };
 
 struct PipelineInfo
@@ -61,6 +64,7 @@ struct PipelineInfo
 	VkRenderPass renderPass;
 	VkPipelineCache pipelineCache;
 	VkDescriptorSetLayout descriptorSetLayout;
+	VkDescriptorSet descriptorSet;
 	VkPipelineLayout pipelineLayout;
 	VkDescriptorPool descriptorPool;
 	VkPipeline pipeline;
@@ -75,12 +79,13 @@ struct DebugInfo
 	VkDebugReportCallbackEXT debugReport;
 };
 
+void CreateDebugCallback(VkInstance vkInstance, VkDebugReportCallbackEXT* debugReport);
 
 VkDescriptorSetLayout NewDescriptorSetLayout(VkDevice logicalDevice, VkDescriptorType type, VkShaderStageFlags flags);
 
 VkPipelineLayout NewPipelineLayout(VkDevice logicalDevice, VkDescriptorSetLayout descriptorSetLayout);
 
-VkInstance NewVkInstance(const char* appName, std::vector<const char*> instanceLayers, std::vector<const char*> instanceExts);
+VkInstance NewVkInstance(const char* appName, std::vector<const char*>* instanceLayers, std::vector<const char*>* instanceExts);
 
 std::vector<VkPhysicalDevice> EnumeratePhysicalDevices(VkInstance vkInstance, uint32_t* gpuCount);
 
@@ -90,12 +95,7 @@ VkFormat GetSupportedDepthFormat(VkPhysicalDevice physicalDevice);
 
 VkSemaphore NewSemaphore(VkDevice logicalDevice);
 
-void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface,
-	VkFormat* surfaceColorFormat,
-	VkColorSpaceKHR* surfaceColorSpace);
-
-VkCommandPool NewCommandPool(uint32_t renderingAndPresentingIndex, VkDevice logicalDevice);
+VkCommandPool NewCommandPool(VkDevice logicalDevice, uint32_t renderingAndPresentingIndex);
 
 VkCommandBuffer NewSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool);
 
@@ -124,13 +124,10 @@ std::vector<VkCommandBuffer> NewCommandBuffer(VkDevice logicalDevice, VkCommandP
 
 void GetMemoryType(VkPhysicalDeviceMemoryProperties memoryProperties, uint32_t typeBits, VkFlags properties, uint32_t* typeIndex);
 
-void setupDepthStencil(VkDevice logicalDevice,
-	DepthStencil* depthStencil,
-	VkFormat depthFormat,
+void setupDepthStencil(DeviceInfo* deviceInfo,
+	const PhysDeviceInfo* physDeviceInfo,
 	uint32_t width,
-	uint32_t height,
-	VkPhysicalDeviceMemoryProperties memoryProperties,
-	VkCommandBuffer setupCmdBuffer);
+	uint32_t height);
 
 VkRenderPass NewRenderPass(VkDevice logicalDevice, VkFormat surfaceColorFormat, VkFormat depthFormat);
 
@@ -144,7 +141,7 @@ std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
 	uint32_t width,
 	uint32_t height);
 
-void FlushSetupCommandBuffer(VkDevice logicalDevice, VkCommandPool cmdPool, VkCommandBuffer* setupCmdBuffer, VkQueue queue);
+void FlushSetupCommandBuffer(DeviceInfo* deviceInfo);
 
 VkBuffer NewBuffer(VkDevice logicalDevice, uint32_t bufferSize, VkBufferUsageFlags usageBits);
 

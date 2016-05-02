@@ -83,14 +83,6 @@ struct MainMemory
 	//TODO better name?
 	VkSubmitInfo submitInfo;
 
-
-
-
-
-	DepthStencil depthStencil;
-
-
-
 	VkCommandBuffer textureCmdBuffer;
 	VertexBuffer vertexBuffer;
 

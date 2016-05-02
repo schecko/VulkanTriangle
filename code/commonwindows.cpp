@@ -91,7 +91,7 @@ File OpenFile(std::string fileName)
 		LARGE_INTEGER fileSize;
 		if (GetFileSizeEx(fileHandle, &fileSize))
 		{
-			Assert(fileSize.QuadPart < (uint64_t)pow(2, 32), "file too big");
+			Assert(fileSize.QuadPart < (int64_t)pow(2, 32), "file too big");
 			uint32_t fileSize32 = fileSize.QuadPart;
 			file.data = VirtualAlloc(0, fileSize32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 			if(file.data)

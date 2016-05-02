@@ -15,9 +15,9 @@
 #include "surface.h"
 #include "util.h"
 
-#if VALIDATION_LAYERS
+
 #include <vulkan/vk_layer.h>
-#endif
+
 
 void UpdateCamera(VkDevice logicalDevice, Camera& camera, uint32_t width, uint32_t height, float zoom, glm::vec3 rotation)
 {
@@ -35,19 +35,19 @@ void UpdateCamera(VkDevice logicalDevice, Camera& camera, uint32_t width, uint32
 	vkUnmapMemory(logicalDevice, camera.memory);
 }
 
-void PrepareVertexData(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties memoryProperties, VkQueue queue, VkCommandPool cmdPool, VertexBuffer* vertexBuffer)
+void PrepareVertexData(const DeviceInfo* deviceInfo, VkPhysicalDeviceMemoryProperties memoryProperties, VertexBuffer* vertexBuffer)
 {
 	size_t vertexBufferSize = vertexBuffer->vPos.size() * sizeof(Vertex);
 	size_t indexBufferSize = vertexBuffer->iPos.size() * sizeof(uint32_t);
 
 	StagingBuffers stagingBuffers;
 
-	VkCommandBuffer copyCommandBuffer = NewCommandBuffer(logicalDevice, cmdPool);
-	vertexBuffer->vBuffer = NewBuffer(logicalDevice, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-	vertexBuffer->iBuffer = NewBuffer(logicalDevice, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	VkCommandBuffer copyCommandBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
+	vertexBuffer->vBuffer = NewBuffer(deviceInfo->device, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	vertexBuffer->iBuffer = NewBuffer(deviceInfo->device, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 	
-	stagingBuffers.vertices = AllocBindDataToGPU(logicalDevice, memoryProperties, vertexBufferSize, vertexBuffer->vPos.data(), &vertexBuffer->vBuffer, &vertexBuffer->vMemory);
-	stagingBuffers.indices = AllocBindDataToGPU(logicalDevice, memoryProperties, indexBufferSize, vertexBuffer->iPos.data(), &vertexBuffer->iBuffer, &vertexBuffer->iMemory);
+	stagingBuffers.vertices = AllocBindDataToGPU(deviceInfo->device, memoryProperties, vertexBufferSize, vertexBuffer->vPos.data(), &vertexBuffer->vBuffer, &vertexBuffer->vMemory);
+	stagingBuffers.indices = AllocBindDataToGPU(deviceInfo->device, memoryProperties, indexBufferSize, vertexBuffer->iPos.data(), &vertexBuffer->iBuffer, &vertexBuffer->iMemory);
 
 	VkCommandBufferBeginInfo cbbInfo = {};
 	cbbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -70,16 +70,16 @@ void PrepareVertexData(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties 
 	csInfo.commandBufferCount = 1;
 	csInfo.pCommandBuffers = &copyCommandBuffer;
 
-	error = vkQueueSubmit(queue, 1, &csInfo, nullptr);
+	error = vkQueueSubmit(deviceInfo->queue, 1, &csInfo, nullptr);
 	Assert(error, "could not submit cmd buffer to copy data");
-	error = vkQueueWaitIdle(queue);
+	error = vkQueueWaitIdle(deviceInfo->queue);
 	Assert(error, "wait for queue during vertex data copy failed");
 
 	//TODO sync?
-	vkDestroyBuffer(logicalDevice, stagingBuffers.vertices.buffer, nullptr);
-	vkFreeMemory(logicalDevice, stagingBuffers.vertices.memory, nullptr);
-	vkDestroyBuffer(logicalDevice, stagingBuffers.indices.buffer, nullptr);
-	vkFreeMemory(logicalDevice, stagingBuffers.indices.memory, nullptr);
+	vkDestroyBuffer(deviceInfo->device, stagingBuffers.vertices.buffer, nullptr);
+	vkFreeMemory(deviceInfo->device, stagingBuffers.vertices.memory, nullptr);
+	vkDestroyBuffer(deviceInfo->device, stagingBuffers.indices.buffer, nullptr);
+	vkFreeMemory(deviceInfo->device, stagingBuffers.indices.memory, nullptr);
 
 	//binding desc
 	vertexBuffer->vBindingDesc.resize(1);
@@ -111,11 +111,10 @@ void PrepareVertexData(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties 
 }
 
 void SetupCommandBuffers(DeviceInfo* deviceInfo,
-	std::vector<VkCommandBuffer>* drawCmdBuffers,
 	uint32_t swapchainImageCount)
 {
-	drawCmdBuffers->resize(swapchainImageCount);
-	*drawCmdBuffers = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool, swapchainImageCount);
+	deviceInfo->drawCmdBuffers.resize(swapchainImageCount);
+	deviceInfo->drawCmdBuffers = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool, swapchainImageCount);
 	deviceInfo->prePresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
 	deviceInfo->postPresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
 }
@@ -143,7 +142,7 @@ void PrepareCameraBuffers(VkDevice logicalDevice,
 }
 
 
-VkPipeline PreparePipelines(VkDevice logicalDevice, PipelineInfo* pipelineInfo, VkPipelineVertexInputStateCreateInfo* vertexInputInfo)
+VkPipeline NewPipeline(VkDevice logicalDevice, const PipelineInfo* pipelineInfo, VkPipelineVertexInputStateCreateInfo* vertexInputInfo)
 {
 
 	VkResult error;
@@ -254,7 +253,7 @@ VkDescriptorPool PrepareDescriptorPool(VkDevice logicalDevice)
 
 }
 
-void PrepareDescriptorSet(VkDevice logicalDevice, PipelineInfo* pipelineInfo, VkDescriptorBufferInfo uniformBufferInfo)
+VkDescriptorSet NewDescriptorSet(VkDevice logicalDevice, const PipelineInfo* pipelineInfo, VkDescriptorBufferInfo uniformBufferInfo)
 {
 
 	VkDescriptorSetAllocateInfo dsInfo = {};
@@ -275,10 +274,11 @@ void PrepareDescriptorSet(VkDevice logicalDevice, PipelineInfo* pipelineInfo, Vk
 	wdSet.pBufferInfo = &uniformBufferInfo;
 	wdSet.dstBinding = 0;
 	vkUpdateDescriptorSets(logicalDevice, 1, &wdSet, 0, nullptr);
+	return descriptorSet;
 
 }
 
-void BuildCmdBuffers(DeviceInfo* deviceInfo, PipelineInfo* pipelineInfo, VkDescriptorSet descriptorSet, uint32_t width, uint32_t height)
+void BuildCmdBuffers(const DeviceInfo* deviceInfo,  const PipelineInfo* pipelineInfo, const SurfaceInfo* surfaceInfo, const VertexBuffer* vertexBuffer, uint32_t clientWidth, uint32_t clientHeight)
 {
 	VkCommandBufferBeginInfo cbInfo = {};
 	cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -291,7 +291,7 @@ void BuildCmdBuffers(DeviceInfo* deviceInfo, PipelineInfo* pipelineInfo, VkDescr
 	rbInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	rbInfo.renderPass = pipelineInfo->renderPass;
 	rbInfo.renderArea.offset = {0, 0};
-	rbInfo.renderArea.extent = {width, height};
+	rbInfo.renderArea.extent = {clientWidth, clientHeight};
 	rbInfo.clearValueCount = 2;
 	rbInfo.pClearValues = clearVals;
 
@@ -310,19 +310,57 @@ void BuildCmdBuffers(DeviceInfo* deviceInfo, PipelineInfo* pipelineInfo, VkDescr
 
 		//update dynamic states
 		VkViewport vp = {};
-		vp.height = (float)height;
-		vp.width = (float)width;
+		vp.height = (float)clientHeight;
+		vp.width = (float)clientWidth;
 		vp.minDepth = 0.0f;
 		vp.maxDepth = 1.0f;
 		vkCmdSetViewport(currCmd, 0, 1, &vp);
 
 		VkRect2D scissor = {};
-		scissor.extent = { width, height };
+		scissor.extent = { clientWidth, clientHeight };
 		scissor.offset = { 0, 0 };
 		vkCmdSetScissor(currCmd, 0, 1, &scissor);
 
 		//bind descriptor sets describing shader bind points
-		vkCmdBindDescriptorSets(currCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineInfo->pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(currCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineInfo->pipelineLayout, 0, 1, &pipelineInfo->descriptorSet, 0, nullptr);
+
+		//bind pipeline, including shaders
+		vkCmdBindPipeline(currCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineInfo->pipeline);
+
+		//bind triangle vertices
+		VkDeviceSize offsets[1] = { 0 };
+		vkCmdBindVertexBuffers(currCmd, VERTEX_BUFFER_BIND_ID, 1, &vertexBuffer->vBuffer, offsets);
+
+		//bind triangle indicies
+		vkCmdBindIndexBuffer(currCmd, vertexBuffer->iBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+		//draw indexed triangle
+		vkCmdDrawIndexed(currCmd, vertexBuffer->iCount, 1, 0, 0, 1);
+
+		vkCmdEndRenderPass(currCmd);
+
+		//add a present memory barrier
+		VkImageMemoryBarrier barrier = {};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+		barrier.image = surfaceInfo->buffers[i].image;
+		
+		vkCmdPipelineBarrier(currCmd,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1,
+			&barrier);
+		VkResult error = vkEndCommandBuffer(currCmd);
+		Assert(error, "could not end draw command buffers");
 	}
 
 }
@@ -345,15 +383,22 @@ void Init(MainMemory* m)
 	{
 		m->debugInfo.instanceLayerList.push_back(layerProps[i].layerName);
 	}
+#else
+	m->debugInfo.instanceLayerList.push_back("VK_LAYER_LUNARG_swapchain");
 #endif
-
+	//required for function GetPhysicalDeviceSurfaceSupportKHR
 	m->debugInfo.instanceExtList.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+	//required for function vkCreateWin32SurfaceKHR 
 	m->debugInfo.instanceExtList.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #if VALIDATION_LAYERS
+	//required for createdebugreportcallback function
 	m->debugInfo.instanceExtList.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 #endif
 
-    m->vkInstance = NewVkInstance(EXE_NAME, m->debugInfo->instanceLayerList, m->debugInfo->instanceExtList);
+    m->vkInstance = NewVkInstance(EXE_NAME, &m->debugInfo.instanceLayerList, &m->debugInfo.instanceExtList);
+#if VALIDATION_LAYERS
+	CreateDebugCallback(m->vkInstance, &m->debugInfo.debugReport);
+#endif
     m->surfaceInfo.surface = NewSurface(m->windowHandle, m->exeHandle, m->vkInstance);
 
 
@@ -374,9 +419,13 @@ void Init(MainMemory* m)
     for (uint32_t i = 0; i < layerPropsDevice.size(); i++)
     {
         m->debugInfo.deviceLayerList.push_back(layerPropsDevice[i].layerName);
-
     }
+#else
+		m->debugInfo.deviceLayerList.push_back("VK_LAYER_LUNARG_swapchain");
 #endif
+	m->debugInfo.deviceExtList.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+
     m->deviceInfo.device = NewLogicalDevice(m->physDeviceInfo.physicalDevice, m->physDeviceInfo.renderingQueueFamilyIndex, m->debugInfo.deviceLayerList, m->debugInfo.deviceExtList);
     vkGetDeviceQueue(m->deviceInfo.device, m->physDeviceInfo.renderingQueueFamilyIndex, 0, &m->deviceInfo.queue);
     m->physDeviceInfo.supportedDepthFormat = GetSupportedDepthFormat(m->physDeviceInfo.physicalDevice);
@@ -392,45 +441,36 @@ void Init(MainMemory* m)
     m->submitInfo.pSignalSemaphores = &m->deviceInfo.renderComplete;
 
 
-    GetSurfaceColorSpaceAndFormat(m->physicalDevice,
-                                  m->surface,
-                                  &m->surfaceColorFormat,
-                                  &m->surfaceColorSpace);
+    GetSurfaceColorSpaceAndFormat(m->physDeviceInfo.physicalDevice,
+                                  &m->surfaceInfo);
 
-    m->cmdPool = NewCommandPool(m->renderingQueueFamilyIndex, m->logicalDevice);
-    m->setupCommandBuffer = NewSetupCommandBuffer(m->logicalDevice,
-                                     m->cmdPool);
-    InitSwapChain(m, &m->clientWidth, &m->clientHeight);
-	SetupCommandBuffers(m->logicalDevice,
-		&m->drawCmdBuffers,
-		&m->prePresentCmdBuffer,
-		&m->postPresentCmdBuffer,
-		m->surfaceImageCount,
-		m->cmdPool);
-	setupDepthStencil(m->logicalDevice, 
-		&m->depthStencil, 
-		m->surfaceColorFormat, 
-		m->clientWidth, 
-		m->clientHeight, 
-		m->memoryProperties, 
-		m->setupCommandBuffer);
+    m->deviceInfo.cmdPool = NewCommandPool(m->deviceInfo.device, m->physDeviceInfo.renderingQueueFamilyIndex);
+    m->deviceInfo.setupCmdBuffer = NewSetupCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
+    InitSwapChain(&m->deviceInfo, m->physDeviceInfo.physicalDevice, &m->surfaceInfo, &m->clientWidth, &m->clientHeight);
+	SetupCommandBuffers(&m->deviceInfo, m->surfaceInfo.imageCount);
+	setupDepthStencil(&m->deviceInfo,
+		&m->physDeviceInfo,
+		m->clientWidth,
+		m->clientHeight);
 
-	m->renderPass = NewRenderPass(m->logicalDevice, m->surfaceColorFormat, m->supportedDepthFormat);
-	m->pipelineCache = NewPipelineCache(m->logicalDevice);
-	m->frameBuffers = NewFrameBuffer(m->logicalDevice,
-		m->surfaceBuffers, 
-		m->renderPass, 
-		m->depthStencil.view, 
-		m->surfaceImageCount, 
+	m->pipelineInfo.renderPass = NewRenderPass(m->deviceInfo.device, 
+		m->surfaceInfo.colorFormat, 
+		m->physDeviceInfo.supportedDepthFormat);
+
+	m->pipelineInfo.pipelineCache = NewPipelineCache(m->deviceInfo.device);
+	m->deviceInfo.frameBuffers = NewFrameBuffer(m->deviceInfo.device,
+		m->surfaceInfo.buffers, 
+		m->pipelineInfo.renderPass, 
+		m->deviceInfo.depthStencil.view, 
+		m->surfaceInfo.imageCount, 
 		m->clientWidth, 
 		m->clientHeight);
 	//TODO why does the setup cmd buffer need to be flushed and recreated?
-	FlushSetupCommandBuffer(m->logicalDevice, m->cmdPool, &m->setupCommandBuffer, m->queue);
-	m->setupCommandBuffer = NewSetupCommandBuffer(m->logicalDevice,
-		m->cmdPool);
+	FlushSetupCommandBuffer(&m->deviceInfo);
+	m->deviceInfo.setupCmdBuffer = NewSetupCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
 	//create cmd buffer for image barriers and converting tilings
 	//TODO what are tilings?
-	m->textureCmdBuffer = NewCommandBuffer(m->logicalDevice, m->cmdPool);
+	m->textureCmdBuffer = NewCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
 
 	m->vertexBuffer.vPos =
 	{
@@ -440,13 +480,21 @@ void Init(MainMemory* m)
 	};
 	m->vertexBuffer.iPos = { 0, 1, 2 };
 	m->vertexBuffer.iCount = 3;
-	PrepareVertexData(m->logicalDevice, m->memoryProperties, m->queue, m->cmdPool, &m->vertexBuffer);
-	PrepareCameraBuffers(m->logicalDevice, m->memoryProperties, &m->camera, m->clientWidth, m->clientHeight, 1.0f, glm::vec3(0.0f, 0.0f, 0.0f));
-	m->descriptorSetlayout = NewDescriptorSetLayout(m->logicalDevice, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
-	m->pipelineLayout = NewPipelineLayout(m->logicalDevice, m->descriptorSetlayout);
-	m->pipeline = PreparePipelines(m->logicalDevice, m->pipelineLayout, m->renderPass, &m->vertexBuffer.viInfo, m->pipelineCache);
-	m->descriptorPool = PrepareDescriptorPool(m->logicalDevice);
-	PrepareDescriptorSet(m->logicalDevice, m->descriptorPool, m->descriptorSetlayout, m->camera.desc);
+	PrepareVertexData(&m->deviceInfo, m->physDeviceInfo.memoryProperties, &m->vertexBuffer);
+	PrepareCameraBuffers(m->deviceInfo.device,
+		m->physDeviceInfo.memoryProperties, 
+		&m->camera, 
+		m->clientWidth, 
+		m->clientHeight, 
+		1.0f, 
+		glm::vec3(0.0f, 0.0f, 0.0f));
+
+	m->pipelineInfo.descriptorSetLayout = NewDescriptorSetLayout(m->deviceInfo.device, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
+	m->pipelineInfo.pipelineLayout = NewPipelineLayout(m->deviceInfo.device, m->pipelineInfo.descriptorSetLayout);
+	m->pipelineInfo.pipeline = NewPipeline(m->deviceInfo.device, &m->pipelineInfo, &m->vertexBuffer.viInfo);
+	m->pipelineInfo.descriptorPool = PrepareDescriptorPool(m->deviceInfo.device);
+	m->pipelineInfo.descriptorSet = NewDescriptorSet(m->deviceInfo.device, &m->pipelineInfo, m->camera.desc);
+	BuildCmdBuffers(&m->deviceInfo, &m->pipelineInfo, &m->surfaceInfo, &m->vertexBuffer, m->clientWidth, m->clientHeight);
 
 }
 
@@ -471,7 +519,7 @@ void Quit(MainMemory* m)
 {
     DestroyWindow(m->windowHandle);
 #if VALIDATION_LAYERS
-	DestroyInstance(m->vkInstance, m->debugReport);
+	DestroyInstance(m->vkInstance, m->debugInfo.debugReport);
 #else
 	DestroyInstance(m->vkInstance);
 #endif

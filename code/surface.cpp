@@ -75,32 +75,30 @@ uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice, VkSurfa
 }
 
 void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface,
-	VkFormat* surfaceColorFormat,
-	VkColorSpaceKHR* surfaceColorSpace)
+	SurfaceInfo* surfaceInfo)
 {
 	uint32_t surfaceFormatCount;
 	VkResult error;
-	error = GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
+	error = GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surfaceInfo->surface, &surfaceFormatCount, nullptr);
 	Assert(error, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
 	Assert(surfaceFormatCount > 0, "surfaceformatcount is less than 1");
 
 	std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
 	error = GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice,
-		surface,
+		surfaceInfo->surface,
 		&surfaceFormatCount,
 		surfaceFormats.data());
 	Assert(error, "could not get surface format counts, GetphysicalDeviceSurfaceFormatsKHR is probably null");
 
 	if (surfaceFormatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
 	{
-		*surfaceColorFormat = VK_FORMAT_B8G8R8A8_UNORM;
+		surfaceInfo->colorFormat = VK_FORMAT_B8G8R8A8_UNORM;
 	}
 	else
 	{
-		*surfaceColorFormat = surfaceFormats[0].format;
+		surfaceInfo->colorFormat = surfaceFormats[0].format;
 	}
-	*surfaceColorSpace = surfaceFormats[0].colorSpace;
+	surfaceInfo->surfaceColorSpace = surfaceFormats[0].colorSpace;
 }
 
 static void SetImageLayout(VkCommandBuffer cmdBuffer,
@@ -256,7 +254,7 @@ static std::vector<VkPresentModeKHR> GetPresentModes(VkPhysicalDevice physDevice
 
 
 void InitSwapChain(
-	DeviceInfo* deviceInfo,
+	const DeviceInfo* deviceInfo,
 	VkPhysicalDevice physDevice,
 	SurfaceInfo* surfaceInfo,
 	uint32_t* width,
@@ -327,7 +325,7 @@ void InitSwapChain(
 	swapchainCI.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	swapchainCI.surface = surfaceInfo->surface;
 	swapchainCI.minImageCount = desiredNumberOfSwapChainImages;
-	swapchainCI.imageFormat = surfaceInfo->surfaceColorFormat;
+	swapchainCI.imageFormat = surfaceInfo->colorFormat;
 	swapchainCI.imageColorSpace = surfaceInfo->surfaceColorSpace;
 	swapchainCI.imageExtent = surfaceExtant;
 	swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -344,18 +342,18 @@ void InitSwapChain(
 	error = CreateSwapchainKHR(deviceInfo->device, &swapchainCI, nullptr, &swapChain);
 	Assert(error, "could not create a swapchain");
 
-	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->surfaceImageCount, nullptr);
+	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->imageCount, nullptr);
 	Assert(error, "could not get surface image count");
-	surfaceInfo->surfaceImages.resize(surfaceInfo->surfaceImageCount);
-	surfaceInfo->surfaceBuffers.resize(surfaceInfo->surfaceImageCount);
-	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->surfaceImageCount, surfaceInfo->surfaceImages.data());
+	surfaceInfo->images.resize(surfaceInfo->imageCount);
+	surfaceInfo->buffers.resize(surfaceInfo->imageCount);
+	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->imageCount, surfaceInfo->images.data());
 	Assert(error, "could not fill surface images vector");
 
-	for (uint32_t i = 0; i < surfaceInfo->surfaceImageCount; i++)
+	for (uint32_t i = 0; i < surfaceInfo->imageCount; i++)
 	{
 		VkImageViewCreateInfo colorAttachmentView = {};
 		colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		colorAttachmentView.format = surfaceInfo->surfaceColorFormat;
+		colorAttachmentView.format = surfaceInfo->colorFormat;
 		colorAttachmentView.components = {
 			VK_COMPONENT_SWIZZLE_R,
 			VK_COMPONENT_SWIZZLE_G,
@@ -370,16 +368,16 @@ void InitSwapChain(
 		colorAttachmentView.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		colorAttachmentView.flags = 0;
 
-		surfaceInfo->surfaceBuffers[i].image = surfaceInfo->surfaceImages[i];
+		surfaceInfo->buffers[i].image = surfaceInfo->images[i];
 
-		SetImageLayout(deviceInfo->setupCommandBuffer,
-			surfaceInfo->surfaceBuffers[i].image,
+		SetImageLayout(deviceInfo->setupCmdBuffer,
+			surfaceInfo->buffers[i].image,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-		colorAttachmentView.image = surfaceInfo->surfaceBuffers[i].image;
-		error = vkCreateImageView(deviceInfo->device, &colorAttachmentView, nullptr, &surfaceInfo->surfaceBuffers[i].view);
+		colorAttachmentView.image = surfaceInfo->buffers[i].image;
+		error = vkCreateImageView(deviceInfo->device, &colorAttachmentView, nullptr, &surfaceInfo->buffers[i].view);
 		Assert(error, "could not create image view");
 	}
 }

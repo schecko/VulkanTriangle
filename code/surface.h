@@ -1,10 +1,11 @@
 #pragma once
 
 #define VK_USE_PLATFORM_WIN32_KHR
+#include <windows.h>
 #include <vulkan/vulkan.h>
 #include "commonvulkan.h"
 
-//todo remove cyclic dependance?
+//todo remove cyclic dependance
 struct DeviceInfo;
 
 struct SwapChainBuffer
@@ -17,10 +18,10 @@ struct SurfaceInfo
 {
 	VkSurfaceKHR surface;
 	VkColorSpaceKHR surfaceColorSpace;
-	VkFormat surfaceColorFormat;
-	uint32_t surfaceImageCount;
-	std::vector<VkImage> surfaceImages;
-	std::vector<SwapChainBuffer> surfaceBuffers;
+	VkFormat colorFormat;
+	uint32_t imageCount;
+	std::vector<VkImage> images;
+	std::vector<SwapChainBuffer> buffers;
 };
 
 VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkInstance);
@@ -28,12 +29,10 @@ VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkIns
 uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice, VkSurfaceKHR surface);
 
 void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface,
-	VkFormat* surfaceColorFormat,
-	VkColorSpaceKHR* surfaceColorSpace);
+	SurfaceInfo* surfaceInfo);
 
 void InitSwapChain(
-	DeviceInfo* deviceInfo,
+	const DeviceInfo* deviceInfo,
 	VkPhysicalDevice physDevice,
 	SurfaceInfo* surfaceInfo,
 	uint32_t* width,
