@@ -585,20 +585,20 @@ VkPipelineCache NewPipelineCache(VkDevice logicalDevice)
 }
 
 std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
-	std::vector<SwapChainBuffer> surfaceBuffers,
+	std::vector<VkImageView>* surfaceViews,
 	VkRenderPass renderPass,
 	VkImageView depthStencilView,
 	uint32_t numBuffers,
 	uint32_t width,
 	uint32_t height)
 {
-	VkImageView attach[2] = {};
+	std::vector<VkImageView> attach(surfaceViews->size());
 	attach[1] = depthStencilView;
 	VkFramebufferCreateInfo fbInfo = {};
 	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	fbInfo.renderPass = renderPass;
 	fbInfo.attachmentCount = 2;
-	fbInfo.pAttachments = attach;
+	fbInfo.pAttachments = attach.data();
 	fbInfo.width = width;
 	fbInfo.height = height;
 	fbInfo.layers = 1;
@@ -607,7 +607,7 @@ std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
 	std::vector<VkFramebuffer> frameBuffers(numBuffers);
 	for (uint32_t i = 0; i < numBuffers; i++)
 	{
-		attach[0] = surfaceBuffers[i].view;
+		attach[i] = surfaceViews->at(i);
 		error = vkCreateFramebuffer(logicalDevice, &fbInfo, nullptr, &frameBuffers[i]);
 		Assert(error, "could not create frame buffer");
 

@@ -349,7 +349,7 @@ void BuildCmdBuffers(const DeviceInfo* deviceInfo,  const PipelineInfo* pipeline
 		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-		barrier.image = surfaceInfo->buffers[i].image;
+		barrier.image = surfaceInfo->images[i];
 		
 		vkCmdPipelineBarrier(currCmd,
 			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -433,12 +433,12 @@ void Init(MainMemory* m)
     m->deviceInfo.presentComplete = NewSemaphore(m->deviceInfo.device);
     m->deviceInfo.renderComplete = NewSemaphore(m->deviceInfo.device);
 
-    m->submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    m->submitInfo.pWaitDstStageMask = (VkPipelineStageFlags*)VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    m->submitInfo.waitSemaphoreCount = 1;
-    m->submitInfo.pWaitSemaphores = &m->deviceInfo.presentComplete;
-    m->submitInfo.signalSemaphoreCount = 1;
-    m->submitInfo.pSignalSemaphores = &m->deviceInfo.renderComplete;
+    m->deviceInfo.submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    m->deviceInfo.submitInfo.pWaitDstStageMask = (VkPipelineStageFlags*)VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    m->deviceInfo.submitInfo.waitSemaphoreCount = 1;
+    m->deviceInfo.submitInfo.pWaitSemaphores = &m->deviceInfo.presentComplete;
+    m->deviceInfo.submitInfo.signalSemaphoreCount = 1;
+    m->deviceInfo.submitInfo.pSignalSemaphores = &m->deviceInfo.renderComplete;
 
 
     GetSurfaceColorSpaceAndFormat(m->physDeviceInfo.physicalDevice,
@@ -459,7 +459,7 @@ void Init(MainMemory* m)
 
 	m->pipelineInfo.pipelineCache = NewPipelineCache(m->deviceInfo.device);
 	m->deviceInfo.frameBuffers = NewFrameBuffer(m->deviceInfo.device,
-		m->surfaceInfo.buffers, 
+		&m->surfaceInfo.views, 
 		m->pipelineInfo.renderPass, 
 		m->deviceInfo.depthStencil.view, 
 		m->surfaceInfo.imageCount, 
@@ -499,9 +499,70 @@ void Init(MainMemory* m)
 }
 
 
-void UpdateAndRender(MainMemory* mainMemory)
+void UpdateAndRender(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 {
+	vkDeviceWaitIdle(deviceInfo->device);
+	VkResult error;
+	error = AcquireNextImage(deviceInfo, surfaceInfo);
+	Assert(error, "could not acquire next image in update and render");
 
+	VkImageMemoryBarrier barrier = {};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+	barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	barrier.srcQueueFamilyIndex - VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+	barrier.image = surfaceInfo->images[surfaceInfo->currentBuffer];
+
+	VkCommandBufferBeginInfo bInfo = {};
+	bInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	error = vkBeginCommandBuffer(deviceInfo->postPresentCmdBuffer, &bInfo);
+	Assert(error, "could not being post present buffer in update and render");
+
+	vkCmdPipelineBarrier(deviceInfo->postPresentCmdBuffer,
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier);
+
+	VkSubmitInfo sInfo = {};
+	sInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	sInfo.commandBufferCount = 1;
+	sInfo.pCommandBuffers = &deviceInfo->postPresentCmdBuffer;
+
+	error = vkQueueSubmit(deviceInfo->queue, 1, &sInfo, nullptr);
+	Assert(error, "could not submit queue in update and render");
+
+	error = vkQueueWaitIdle(deviceInfo->queue);
+	Assert(error,"could not queue wait idle in update and render");
+
+	VkPipelineStageFlags stageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	sInfo = {};
+	sInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	sInfo.pWaitDstStageMask = &stageFlags;
+	sInfo.waitSemaphoreCount = 1;
+	sInfo.pWaitSemaphores = &deviceInfo->presentComplete;
+	sInfo.commandBufferCount = 1;
+	sInfo.pCommandBuffers = &deviceInfo->drawCmdBuffers[surfaceInfo->currentBuffer];
+	sInfo.signalSemaphoreCount = 1;
+	sInfo.pSignalSemaphores = &deviceInfo->renderComplete;
+
+	error = vkQueueSubmit(deviceInfo->queue, 1, &sInfo, nullptr);
+	Assert(error, "could not submit cmd buffer in update and render");
+
+	error = vkEndCommandBuffer(deviceInfo->postPresentCmdBuffer);
+	Assert(error, "could not end post present cmd buffer in update and render");
+
+	error = QueuePresent(deviceInfo, surfaceInfo);
+	Assert(error, "could not present queue in update and render");
+
+	vkDeviceWaitIdle(deviceInfo->device);
 }
 
 void PollEvents(HWND windowHandle)
@@ -529,15 +590,15 @@ void Quit(MainMemory* m)
 int main(int argv, char** argc)
 {
 
-    MainMemory* mainMemory = new MainMemory();
-    Init(mainMemory);
-    while (mainMemory->running)
+    MainMemory* m = new MainMemory();
+    Init(m);
+    while (m->running)
     {
-        PollEvents(mainMemory->windowHandle);
-        UpdateAndRender(mainMemory);
+        PollEvents(m->windowHandle);
+        UpdateAndRender(&m->deviceInfo, &m->surfaceInfo);
     }
-    Quit(mainMemory);
-    delete mainMemory;
+    Quit(m);
+    delete m;
     return 0;
 }
 

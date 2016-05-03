@@ -79,10 +79,6 @@ struct MainMemory
 
 	DeviceInfo deviceInfo;
 
-
-	//TODO better name?
-	VkSubmitInfo submitInfo;
-
 	VkCommandBuffer textureCmdBuffer;
 	VertexBuffer vertexBuffer;
 

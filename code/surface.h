@@ -8,20 +8,16 @@
 //todo remove cyclic dependance
 struct DeviceInfo;
 
-struct SwapChainBuffer
-{
-	VkImage image;
-	VkImageView view;
-};
-
 struct SurfaceInfo
 {
 	VkSurfaceKHR surface;
-	VkColorSpaceKHR surfaceColorSpace;
+	VkColorSpaceKHR colorSpace;
 	VkFormat colorFormat;
 	uint32_t imageCount;
 	std::vector<VkImage> images;
-	std::vector<SwapChainBuffer> buffers;
+	std::vector<VkImageView> views;
+	VkSwapchainKHR swapChain;
+	uint32_t currentBuffer;
 };
 
 VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkInstance);
@@ -37,3 +33,7 @@ void InitSwapChain(
 	SurfaceInfo* surfaceInfo,
 	uint32_t* width,
 	uint32_t* height);
+
+VkResult AcquireNextImage(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo);
+
+VkResult QueuePresent(const DeviceInfo* deviceInfo, const SurfaceInfo* surfaceInfo);

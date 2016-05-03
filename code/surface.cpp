@@ -98,7 +98,7 @@ void GetSurfaceColorSpaceAndFormat(VkPhysicalDevice physicalDevice,
 	{
 		surfaceInfo->colorFormat = surfaceFormats[0].format;
 	}
-	surfaceInfo->surfaceColorSpace = surfaceFormats[0].colorSpace;
+	surfaceInfo->colorSpace = surfaceFormats[0].colorSpace;
 }
 
 static void SetImageLayout(VkCommandBuffer cmdBuffer,
@@ -252,6 +252,67 @@ static std::vector<VkPresentModeKHR> GetPresentModes(VkPhysicalDevice physDevice
 
 }
 
+VkPresentModeKHR GetPresentMode(std::vector<VkPresentModeKHR>* presentModes)
+{
+	VkPresentModeKHR swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	for (size_t i = 0; i < presentModes->size(); i++)
+	{
+		if (presentModes->at(i) == VK_PRESENT_MODE_MAILBOX_KHR)
+		{
+			swapChainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+			break;
+		}
+		if (swapChainPresentMode != VK_PRESENT_MODE_MAILBOX_KHR &&
+			presentModes->at(i) == VK_PRESENT_MODE_IMMEDIATE_KHR)
+		{
+			swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+		}
+	}
+	return swapChainPresentMode;
+}
+
+VkExtent2D GetSurfaceExtent(VkSurfaceCapabilitiesKHR* surfaceCaps, uint32_t* clientWidth, uint32_t* clientHeight)
+{
+	VkExtent2D surfaceExtant = {};
+	//width and height are either both -1, or both not -1
+	if (surfaceCaps->currentExtent.width == -1)
+	{
+		surfaceExtant.width = *clientWidth;
+		surfaceExtant.height = *clientHeight;
+	}
+	else
+	{
+		surfaceExtant = surfaceCaps->currentExtent;
+		*clientWidth = surfaceCaps->currentExtent.width;
+		*clientHeight = surfaceCaps->currentExtent.height;
+	}
+	return surfaceExtant;
+}
+
+uint32_t GetDesiredNumSwapChainImages(const VkSurfaceCapabilitiesKHR* surfaceCaps)
+{
+	//determine the number of images
+	uint32_t desiredNumberOfSwapChainImages = surfaceCaps->minImageCount + 1;
+	if (surfaceCaps->maxImageCount > 0 && desiredNumberOfSwapChainImages > surfaceCaps->maxImageCount)
+	{
+		desiredNumberOfSwapChainImages = surfaceCaps->maxImageCount;
+	}
+	return desiredNumberOfSwapChainImages;
+}
+
+VkSurfaceTransformFlagBitsKHR GetSurfaceTransformBits(const VkSurfaceCapabilitiesKHR* surfaceCaps)
+{
+	VkSurfaceTransformFlagBitsKHR preTransform;
+	if (surfaceCaps->supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
+	{
+		preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	}
+	else
+	{
+		preTransform = surfaceCaps->currentTransform;
+	}
+	return preTransform;
+}
 
 void InitSwapChain(
 	const DeviceInfo* deviceInfo,
@@ -275,109 +336,81 @@ void InitSwapChain(
 	VkSurfaceCapabilitiesKHR surfaceCaps = GetSurfaceCaps(physDevice, surfaceInfo->surface);
 	std::vector<VkPresentModeKHR> presentModes = GetPresentModes(physDevice, surfaceInfo->surface);
 
-
-	VkExtent2D surfaceExtant = {};
-	//width and height are either both -1, or both not -1
-	if (surfaceCaps.currentExtent.width == -1)
-	{
-		surfaceExtant.width = *width;
-		surfaceExtant.height = *height;
-	}
-	else
-	{
-		surfaceExtant = surfaceCaps.currentExtent;
-		*width = surfaceCaps.currentExtent.width;
-		*height = surfaceCaps.currentExtent.height;
-	}
-
-	VkPresentModeKHR swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-	for (size_t i = 0; i < presentModes.size(); i++)
-	{
-		if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
-		{
-			swapChainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-			break;
-		}
-		if (swapChainPresentMode != VK_PRESENT_MODE_MAILBOX_KHR &&
-			presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
-		{
-			swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-		}
-	}
-
-	//determine the number of images
-	uint32_t desiredNumberOfSwapChainImages = surfaceCaps.minImageCount + 1;
-	if (surfaceCaps.maxImageCount > 0 && desiredNumberOfSwapChainImages > surfaceCaps.maxImageCount)
-	{
-		desiredNumberOfSwapChainImages = surfaceCaps.maxImageCount;
-	}
-	VkSurfaceTransformFlagsKHR preTransform;
-	if (surfaceCaps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-	{
-		preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	}
-	else
-	{
-		preTransform = surfaceCaps.currentTransform;
-	}
-
-	VkSwapchainCreateInfoKHR swapchainCI = {};
-	swapchainCI.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	swapchainCI.surface = surfaceInfo->surface;
-	swapchainCI.minImageCount = desiredNumberOfSwapChainImages;
-	swapchainCI.imageFormat = surfaceInfo->colorFormat;
-	swapchainCI.imageColorSpace = surfaceInfo->surfaceColorSpace;
-	swapchainCI.imageExtent = surfaceExtant;
-	swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	swapchainCI.preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform;
-	swapchainCI.imageArrayLayers = 1;
-	swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	swapchainCI.presentMode = swapChainPresentMode;
+	VkSwapchainCreateInfoKHR scInfo = {};
+	scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	scInfo.surface = surfaceInfo->surface;
+	scInfo.minImageCount = GetDesiredNumSwapChainImages(&surfaceCaps);
+	scInfo.imageFormat = surfaceInfo->colorFormat;
+	scInfo.imageColorSpace = surfaceInfo->colorSpace;
+	scInfo.imageExtent = GetSurfaceExtent(&surfaceCaps, width, height);
+	scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	scInfo.preTransform = GetSurfaceTransformBits(&surfaceCaps);
+	scInfo.imageArrayLayers = 1;
+	scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	scInfo.presentMode = GetPresentMode(&presentModes);
 	//TODO do I ever have an old swapchain and need to create a new one?
 	//swapchainCI.oldSwapchain = oldSwapChain;
-	swapchainCI.clipped = VK_TRUE;
-	swapchainCI.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	scInfo.clipped = VK_TRUE;
+	scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	VkSwapchainKHR swapChain;
-	error = CreateSwapchainKHR(deviceInfo->device, &swapchainCI, nullptr, &swapChain);
+	error = CreateSwapchainKHR(deviceInfo->device, &scInfo, nullptr, &swapChain);
 	Assert(error, "could not create a swapchain");
 
 	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->imageCount, nullptr);
 	Assert(error, "could not get surface image count");
 	surfaceInfo->images.resize(surfaceInfo->imageCount);
-	surfaceInfo->buffers.resize(surfaceInfo->imageCount);
+	surfaceInfo->views.resize(surfaceInfo->imageCount);
 	error = GetSwapchainImagesKHR(deviceInfo->device, swapChain, &surfaceInfo->imageCount, surfaceInfo->images.data());
 	Assert(error, "could not fill surface images vector");
 
 	for (uint32_t i = 0; i < surfaceInfo->imageCount; i++)
 	{
-		VkImageViewCreateInfo colorAttachmentView = {};
-		colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		colorAttachmentView.format = surfaceInfo->colorFormat;
-		colorAttachmentView.components = {
+		VkImageViewCreateInfo ivInfo = {};
+		ivInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		ivInfo.format = surfaceInfo->colorFormat;
+		ivInfo.components = {
 			VK_COMPONENT_SWIZZLE_R,
 			VK_COMPONENT_SWIZZLE_G,
 			VK_COMPONENT_SWIZZLE_B,
 			VK_COMPONENT_SWIZZLE_A
 		};
-		colorAttachmentView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		colorAttachmentView.subresourceRange.baseMipLevel = 0;
-		colorAttachmentView.subresourceRange.levelCount = 1;
-		colorAttachmentView.subresourceRange.baseArrayLayer = 0;
-		colorAttachmentView.subresourceRange.layerCount = 1;
-		colorAttachmentView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		colorAttachmentView.flags = 0;
-
-		surfaceInfo->buffers[i].image = surfaceInfo->images[i];
+		ivInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		ivInfo.subresourceRange.baseMipLevel = 0;
+		ivInfo.subresourceRange.levelCount = 1;
+		ivInfo.subresourceRange.baseArrayLayer = 0;
+		ivInfo.subresourceRange.layerCount = 1;
+		ivInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		ivInfo.flags = 0;
 
 		SetImageLayout(deviceInfo->setupCmdBuffer,
-			surfaceInfo->buffers[i].image,
+			surfaceInfo->images[i],
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-		colorAttachmentView.image = surfaceInfo->buffers[i].image;
-		error = vkCreateImageView(deviceInfo->device, &colorAttachmentView, nullptr, &surfaceInfo->buffers[i].view);
+		ivInfo.image = surfaceInfo->images[i];
+		error = vkCreateImageView(deviceInfo->device, &ivInfo, nullptr, &surfaceInfo->views[i]);
 		Assert(error, "could not create image view");
 	}
+	surfaceInfo->swapChain = swapChain;
+}
+
+VkResult AcquireNextImage(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
+{
+	return AcquireNextImageKHR(deviceInfo->device, surfaceInfo->swapChain, UINT64_MAX, deviceInfo->presentComplete, nullptr, &surfaceInfo->currentBuffer);
+}
+
+VkResult QueuePresent(const DeviceInfo* deviceInfo, const SurfaceInfo* surfaceInfo)
+{
+	VkPresentInfoKHR pInfo = {};
+	pInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	pInfo.swapchainCount = 1;
+	pInfo.pSwapchains = &surfaceInfo->swapChain;
+	pInfo.pImageIndices = &surfaceInfo->currentBuffer;
+	pInfo.waitSemaphoreCount = 1;
+	pInfo.pWaitSemaphores = &deviceInfo->renderComplete;
+	return QueuePresentKHR(deviceInfo->queue, &pInfo);
+
+
 }

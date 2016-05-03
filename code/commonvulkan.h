@@ -9,7 +9,7 @@
 
 //TODO dont really know
 //TODO rename?
-struct DepthStencil
+ struct DepthStencil
 {
 	VkImage image;
 	VkDeviceMemory mem;
@@ -45,6 +45,9 @@ struct DeviceInfo
 	VkDevice device;
 	VkQueue queue;
 	VkCommandPool cmdPool;
+
+	//TODO better name?
+	VkSubmitInfo submitInfo;
 
 	VkSemaphore presentComplete;
 	VkSemaphore renderComplete;
@@ -134,7 +137,7 @@ VkRenderPass NewRenderPass(VkDevice logicalDevice, VkFormat surfaceColorFormat, 
 VkPipelineCache NewPipelineCache(VkDevice logicalDevice);
 
 std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
-	std::vector<SwapChainBuffer> surfaceBuffers,
+	std::vector<VkImageView>* surfaceViews,
 	VkRenderPass renderPass,
 	VkImageView depthStencilView,
 	uint32_t numBuffers,
