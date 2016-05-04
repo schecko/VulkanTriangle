@@ -39,17 +39,17 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	std::string reportMessage;
 	if (flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
 	{
-		reportMessage += "DEBUG: ";
+		//reportMessage += "DEBUG: ";
 
 	}
 	if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
 	{
-		reportMessage += "WARNING: ";
+		//reportMessage += "WARNING: ";
 
 	}
 	if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
 	{
-		reportMessage += "PERFORMANCE WARNING: ";
+		//reportMessage += "PERFORMANCE WARNING: ";
 	}
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
@@ -59,16 +59,17 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
 	{
 
-		reportMessage += "INFORMATION: ";
+		//reportMessage += "INFORMATION: ";
 	}
 
-	reportMessage += "@[";
-	reportMessage += layerPrefix;
-	reportMessage += "] ";
-	reportMessage += msg;
-	std::cout << reportMessage.c_str() << std::endl;
+
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
+		reportMessage += "@[";
+		reportMessage += layerPrefix;
+		reportMessage += "] ";
+		reportMessage += msg;
+		std::cout << reportMessage.c_str() << std::endl;
 		Assert(0, "error in VK");
 		return true;
 
@@ -477,7 +478,7 @@ void setupDepthStencil(DeviceInfo* deviceInfo,
 	image.arrayLayers = 1;
 	image.samples = VK_SAMPLE_COUNT_1_BIT;
 	image.tiling = VK_IMAGE_TILING_OPTIMAL;
-	image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
 	VkMemoryAllocateInfo mAlloc = {};
 	mAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -607,7 +608,7 @@ std::vector<VkFramebuffer> NewFrameBuffer(VkDevice logicalDevice,
 	std::vector<VkFramebuffer> frameBuffers(numBuffers);
 	for (uint32_t i = 0; i < numBuffers; i++)
 	{
-		attach[i] = surfaceViews->at(i);
+		attach[0] = surfaceViews->at(i);
 		error = vkCreateFramebuffer(logicalDevice, &fbInfo, nullptr, &frameBuffers[i]);
 		Assert(error, "could not create frame buffer");
 

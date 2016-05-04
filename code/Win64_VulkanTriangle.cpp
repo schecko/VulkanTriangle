@@ -284,7 +284,7 @@ void BuildCmdBuffers(const DeviceInfo* deviceInfo,  const PipelineInfo* pipeline
 	cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	
 	VkClearValue clearVals[2] = {};
-	clearVals[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+	clearVals[0].color = {{0.2f, 0.2f, 0.2f, 1.0f}};
 	clearVals[1].depthStencil = {1.0f, 0};
 
 	VkRenderPassBeginInfo rbInfo = {};
@@ -508,13 +508,13 @@ void UpdateAndRender(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 
 	VkImageMemoryBarrier barrier = {};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+	barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 	barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	barrier.srcQueueFamilyIndex - VK_QUEUE_FAMILY_IGNORED;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+	barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	barrier.image = surfaceInfo->images[surfaceInfo->currentBuffer];
 
 	VkCommandBufferBeginInfo bInfo = {};
@@ -536,6 +536,9 @@ void UpdateAndRender(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 	sInfo.commandBufferCount = 1;
 	sInfo.pCommandBuffers = &deviceInfo->postPresentCmdBuffer;
 
+	error = vkEndCommandBuffer(deviceInfo->postPresentCmdBuffer);
+	Assert(error, "could not end post present cmd buffer in update and render");
+
 	error = vkQueueSubmit(deviceInfo->queue, 1, &sInfo, nullptr);
 	Assert(error, "could not submit queue in update and render");
 
@@ -555,9 +558,6 @@ void UpdateAndRender(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 
 	error = vkQueueSubmit(deviceInfo->queue, 1, &sInfo, nullptr);
 	Assert(error, "could not submit cmd buffer in update and render");
-
-	error = vkEndCommandBuffer(deviceInfo->postPresentCmdBuffer);
-	Assert(error, "could not end post present cmd buffer in update and render");
 
 	error = QueuePresent(deviceInfo, surfaceInfo);
 	Assert(error, "could not present queue in update and render");

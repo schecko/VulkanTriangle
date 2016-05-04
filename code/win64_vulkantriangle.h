@@ -33,7 +33,7 @@ struct Camera
 {
 	VkBuffer buffer;
 	VkDeviceMemory memory;
-	VkDescriptorBufferInfo desc;
+	struct VkDescriptorBufferInfo desc;
 
 	CameraPosition position;
 };
