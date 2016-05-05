@@ -9,8 +9,7 @@
 //handle the windows messages
 LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 {
-
-	MainMemory* mainMemory = (MainMemory*)GetWindowLongPtr(hwnd, 0);
+	Input* input = (Input*)GetWindowLongPtr(hwnd, 0);
 	switch (msg)
 	{
 	case WM_CREATE:
@@ -22,7 +21,24 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 	case WM_DESTROY:
 	case WM_CLOSE:
 	{
-		mainMemory->running = false;
+		input->running = false;
+	}
+	break;
+	case WM_IME_KEYUP:
+	case WM_KEYUP:
+	case WM_IME_KEYDOWN:
+	case WM_KEYDOWN:
+	{
+		bool keyDown = ((lP >> 31) & 0x1);
+		switch(wP)
+		{
+		case 0x44:
+			//D
+		{
+
+		}
+		break;
+		}
 	}
 	break;
 	default:

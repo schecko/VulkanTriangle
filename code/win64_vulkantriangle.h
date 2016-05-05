@@ -10,7 +10,7 @@
 
 static const char* EXE_NAME = "VulkanTriangle";
 static const uint32_t VERTEX_BUFFER_BIND_ID = 0;
-#define VALIDATION_LAYERS true
+#define VALIDATION_LAYERS false
 #define DEBUGGING true
 
 

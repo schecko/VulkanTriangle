@@ -486,8 +486,8 @@ void Init(MainMemory* m)
 		&m->camera, 
 		m->clientWidth, 
 		m->clientHeight, 
-		1.0f, 
-		glm::vec3(0.0f, 0.0f, 0.0f));
+		-2.0f, 
+		glm::vec3(40.0f, 40.0f, 0.0f));
 
 	m->pipelineInfo.descriptorSetLayout = NewDescriptorSetLayout(m->deviceInfo.device, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
 	m->pipelineInfo.pipelineLayout = NewPipelineLayout(m->deviceInfo.device, m->pipelineInfo.descriptorSetLayout);
