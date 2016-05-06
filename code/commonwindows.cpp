@@ -4,7 +4,6 @@
 #include <string>
 #include "commonwindows.h"
 #include "util.h"
-#include "win64_vulkantriangle.h"
 
 //handle the windows messages
 LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
@@ -12,39 +11,51 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 	Input* input = (Input*)GetWindowLongPtr(hwnd, 0);
 	switch (msg)
 	{
-	case WM_CREATE:
-	{
-		CREATESTRUCTW* cs = (CREATESTRUCTW*)lP;
-		SetWindowLongPtrW(hwnd, 0, (LONG_PTR)cs->lpCreateParams);
-	}
-	break;
-	case WM_DESTROY:
-	case WM_CLOSE:
-	{
-		input->running = false;
-	}
-	break;
-	case WM_IME_KEYUP:
-	case WM_KEYUP:
-	case WM_IME_KEYDOWN:
-	case WM_KEYDOWN:
-	{
-		bool keyDown = ((lP >> 31) & 0x1);
-		switch(wP)
-		{
-		case 0x44:
-			//D
-		{
-
-		}
-		break;
-		}
-	}
-	break;
-	default:
-	{
-		return DefWindowProc(hwnd, msg, wP, lP);
-	}
+		case WM_CREATE:
+			{
+				CREATESTRUCTW* cs = (CREATESTRUCTW*)lP;
+				SetWindowLongPtrW(hwnd, 0, (LONG_PTR)cs->lpCreateParams);
+			}
+			break;
+		case WM_DESTROY:
+		case WM_CLOSE:
+			{
+				input->running = false;
+				return 0;
+			}
+			break;
+		case WM_IME_KEYUP:
+		case WM_KEYUP:
+			{
+				//only works for windows since the keys are based on windows key codes
+				//would have to use a switch for other platforms but for now this seems at least somewhat elegant
+				if (wP < InputCodesSize)
+				{
+					input->keys[wP] = false;
+				}
+				return 0;
+			}
+		case WM_IME_KEYDOWN:
+		case WM_KEYDOWN:
+			{
+				//only works for windows since the keys are based on windows key codes
+				//would have to use a switch for other platforms but for now this seems at least somewhat elegant
+				if (wP < InputCodesSize)
+				{
+					input->keys[wP] = true;
+				}
+				return 0;
+			}
+			break;
+		case WM_MOUSEMOVE:
+			{
+				return DefWindowProc(hwnd, msg, wP, lP);
+			}
+			break;
+		default:
+			{
+				return DefWindowProc(hwnd, msg, wP, lP);
+			}
 	}
 	return 0;
 }

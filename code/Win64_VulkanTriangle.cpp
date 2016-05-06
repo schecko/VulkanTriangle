@@ -9,31 +9,10 @@
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include "commonvulkan.h"
 #include "commonwindows.h"
 #include "surface.h"
 #include "util.h"
-
-
-#include <vulkan/vk_layer.h>
-
-
-void UpdateCamera(VkDevice logicalDevice, Camera& camera, uint32_t width, uint32_t height, float zoom, glm::vec3 rotation)
-{
-	camera.position.projection = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 256.0f);
-	camera.position.view = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, zoom));
-	camera.position.model = glm::mat4();
-	camera.position.model = glm::rotate(camera.position.model, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-	camera.position.model = glm::rotate(camera.position.model, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-	camera.position.model = glm::rotate(camera.position.model, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-
-	void* destPointer;
-	VkResult error = vkMapMemory(logicalDevice, camera.memory, 0, sizeof(CameraPosition), 0, &destPointer);
-	Assert(error, "could not map uniform data in update camera");
-	memcpy(destPointer, &camera.position, sizeof(CameraPosition));
-	vkUnmapMemory(logicalDevice, camera.memory);
-}
 
 void PrepareVertexData(const DeviceInfo* deviceInfo, VkPhysicalDeviceMemoryProperties memoryProperties, VertexBuffer* vertexBuffer)
 {
@@ -88,7 +67,7 @@ void PrepareVertexData(const DeviceInfo* deviceInfo, VkPhysicalDeviceMemoryPrope
 	vertexBuffer->vBindingDesc[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 	vertexBuffer->vBindingAttr.resize(2);
-	//location 0 is position
+	//location 0 is cameraMats
 	vertexBuffer->vBindingAttr[0].binding = VERTEX_BUFFER_BIND_ID;
 	vertexBuffer->vBindingAttr[0].location = 0;
 	vertexBuffer->vBindingAttr[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
@@ -118,29 +97,6 @@ void SetupCommandBuffers(DeviceInfo* deviceInfo,
 	deviceInfo->prePresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
 	deviceInfo->postPresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
 }
-
-void PrepareCameraBuffers(VkDevice logicalDevice, 
-	VkPhysicalDeviceMemoryProperties memoryProperties,
-	Camera* camera,
-	uint32_t width, 
-	uint32_t height, 
-	float zoom, 
-	glm::vec3 rotation)
-{
-	camera->buffer = NewBuffer(logicalDevice, sizeof(CameraPosition), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-	VkMemoryAllocateInfo aInfo = NewMemoryAllocInfo(logicalDevice, memoryProperties, camera->buffer, 0, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	VkResult error;
-	error = vkAllocateMemory(logicalDevice, &aInfo, nullptr, &camera->memory);
-	Assert(error, "could not allocate memory in prepapre camera buffers");
-	error = vkBindBufferMemory(logicalDevice, camera->buffer, camera->memory, 0);
-	Assert(error, "could not bind buffer memory in prepare camera buffers");
-
-	camera->desc.buffer = camera->buffer;
-	camera->desc.offset = 0;
-	camera->desc.range = sizeof(CameraPosition);
-	UpdateCamera(logicalDevice, *camera, width, height, zoom, rotation);
-}
-
 
 VkPipeline NewPipeline(VkDevice logicalDevice, const PipelineInfo* pipelineInfo, VkPipelineVertexInputStateCreateInfo* vertexInputInfo)
 {
@@ -368,13 +324,14 @@ void BuildCmdBuffers(const DeviceInfo* deviceInfo,  const PipelineInfo* pipeline
 void Init(MainMemory* m)
 {
 
-    m->running = true;
+    m->input.running = true;
     m->consoleHandle = GetConsoleWindow();
     //ShowWindow(m->consoleHandle, SW_HIDE);
     m->clientWidth = 1200;
     m->clientHeight = 800;
+	m->camera.cameraPos = NewCameraPos();
 
-    m->windowHandle = NewWindow(EXE_NAME, m, m->clientWidth, m->clientHeight);
+    m->windowHandle = NewWindow(EXE_NAME, &m->input, m->clientWidth, m->clientHeight);
 	//ShowWindow(m->windowHandle, SW_HIDE);
 
 #if VALIDATION_LAYERS
@@ -487,7 +444,7 @@ void Init(MainMemory* m)
 		m->clientWidth, 
 		m->clientHeight, 
 		-2.0f, 
-		glm::vec3(40.0f, 40.0f, 0.0f));
+		glm::vec3(40.0f, 0.0f, 0.0f));
 
 	m->pipelineInfo.descriptorSetLayout = NewDescriptorSetLayout(m->deviceInfo.device, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
 	m->pipelineInfo.pipelineLayout = NewPipelineLayout(m->deviceInfo.device, m->pipelineInfo.descriptorSetLayout);
@@ -499,7 +456,7 @@ void Init(MainMemory* m)
 }
 
 
-void UpdateAndRender(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
+void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 {
 	vkDeviceWaitIdle(deviceInfo->device);
 	VkResult error;
@@ -565,15 +522,51 @@ void UpdateAndRender(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 	vkDeviceWaitIdle(deviceInfo->device);
 }
 
+void Update(MainMemory* m)
+{
+	Input input = m->input;
+	m->dt = 1;
+	float speed = CAMERA_SPEED * m->dt;
+	if(input.keys[keyW])
+	{
+		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
+	}
+	if (input.keys[keyS])
+	{
+		m->camera.cameraPos.position -= m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
+	}
+	if (input.keys[keyA])
+	{
+		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.right * speed;
+	}
+	if (input.keys[keyD])
+	{
+		m->camera.cameraPos.position -= m->camera.cameraPos.position + m->camera.cameraPos.right * speed;
+	}
+	UpdateCamera(m->deviceInfo.device, m->camera, m->clientWidth, m->clientHeight);
+	
+}
+
 void PollEvents(HWND windowHandle)
 {
     MSG msg;
+#if 0
     while (PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-
     }
+#else
+	for (int i = 0; i < 20; i++)
+	{	
+		if (!PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE))
+		{
+			break;
+		}
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+#endif
 }
 
 void Quit(MainMemory* m)
@@ -592,10 +585,11 @@ int main(int argv, char** argc)
 
     MainMemory* m = new MainMemory();
     Init(m);
-    while (m->running)
+    while (m->input.running)
     {
         PollEvents(m->windowHandle);
-        UpdateAndRender(&m->deviceInfo, &m->surfaceInfo);
+		Update(m);
+        Render(&m->deviceInfo, &m->surfaceInfo);
     }
     Quit(m);
     delete m;

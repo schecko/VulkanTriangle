@@ -4,12 +4,15 @@
 #include <vulkan/vulkan.h>
 #include <windows.h>
 #include <vector>
-#include <glm/glm.hpp>
+
 #include "commonvulkan.h"
 #include "surface.h"
+#include "commonwindows.h"
+#include "camera.h"
 
 static const char* EXE_NAME = "VulkanTriangle";
 static const uint32_t VERTEX_BUFFER_BIND_ID = 0;
+static const float CAMERA_SPEED = 20;
 #define VALIDATION_LAYERS false
 #define DEBUGGING true
 
@@ -21,22 +24,6 @@ struct Vertex
 	float col[3];
 };
 
-struct CameraPosition
-{
-	glm::mat4 projection;
-	glm::mat4 model;
-	glm::mat4 view;
-
-};
-
-struct Camera
-{
-	VkBuffer buffer;
-	VkDeviceMemory memory;
-	struct VkDescriptorBufferInfo desc;
-
-	CameraPosition position;
-};
 
 //vertex data stored on the gpu ram
 struct VertexBuffer
@@ -67,16 +54,15 @@ struct MainMemory
 	HINSTANCE exeHandle;
 	uint32_t clientWidth, clientHeight;
 
-	bool running;
+	float dt;
+	float lastFrameTime;
+
+	Input input;
 
 	VkInstance vkInstance;
-
 	SurfaceInfo surfaceInfo;
-
 	PhysDeviceInfo physDeviceInfo;
-
 	DebugInfo debugInfo;
-
 	DeviceInfo deviceInfo;
 
 	VkCommandBuffer textureCmdBuffer;
