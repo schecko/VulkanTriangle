@@ -1,6 +1,7 @@
 
 
 #include <windows.h>
+#include <windowsx.h>
 #include <string>
 #include "commonwindows.h"
 #include "util.h"
@@ -48,8 +49,14 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 			}
 			break;
 		case WM_MOUSEMOVE:
+		case WM_NCMOUSEHOVER:
+		case WM_NCMOUSELEAVE:
+		case WM_MOUSEHOVER:
 			{
-				return DefWindowProc(hwnd, msg, wP, lP);
+				BOOL tracked = TrackMouseEvent(&input->mouseEvent);
+				input->mouseInWindow = (bool)tracked;
+				input->lastMousePos = input->mousePos;
+				input->mousePos = glm::vec2((float)GET_X_LPARAM(lP), (float)GET_Y_LPARAM(lP));
 			}
 			break;
 		default:

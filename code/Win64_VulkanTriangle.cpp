@@ -4,6 +4,7 @@
 #include "win64_vulkantriangle.h"
 #include <vulkan/vulkan.h>
 
+#define GLM_FORCE_RADIANS
 #include <windows.h>
 #include <iostream>
 #include <string>
@@ -543,6 +544,23 @@ void Update(MainMemory* m)
 	{
 		m->camera.cameraPos.position -= m->camera.cameraPos.position + m->camera.cameraPos.right * speed;
 	}
+	if(input.mouseInWindow)
+	{
+		if(input.keys[lMouse])
+		{
+			//mouse is inside clientrect and player is holding down left mouse button
+			float xOffset = input.lastMousePos.x - input.mousePos.x;
+			float yOffset = input.mousePos.y - input.lastMousePos.y;
+			m->camera.cameraPos.yaw += xOffset;
+			m->camera.cameraPos.pitch += yOffset;
+		}
+
+
+
+	}
+
+
+
 	UpdateCamera(m->deviceInfo.device, m->camera, m->clientWidth, m->clientHeight);
 	
 }

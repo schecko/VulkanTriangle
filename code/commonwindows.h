@@ -1,7 +1,8 @@
 #pragma once
 
-
+#define GLM_FORCE_RADIANS
 #include <windows.h>
+#include <glm/glm.hpp>
 
 
 struct File
@@ -109,6 +110,10 @@ struct Input
 {
 	bool running;
 	bool keys[InputCodesSize];
+	glm::vec2 mousePos;
+	glm::vec2 lastMousePos;
+	bool mouseInWindow;
+	TRACKMOUSEEVENT mouseEvent;
 
 };
 

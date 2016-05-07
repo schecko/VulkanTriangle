@@ -1,4 +1,4 @@
-
+#define GLM_FORCE_RADIANS
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
@@ -24,10 +24,9 @@ void UpdateCamera(VkDevice logicalDevice, Camera& camera, uint32_t width, uint32
 	camera.cameraPos.right = glm::normalize(glm::cross(camera.cameraPos.front, camera.cameraPos.worldUp));
 	camera.cameraPos.up = glm::normalize(glm::cross(camera.cameraPos.right, camera.cameraPos.front));
 
-	camera.cameraMats.view = glm::lookAt(camera.cameraPos.position, camera.cameraPos.position + camera.cameraPos.front, camera.cameraPos.up);
+	camera.cameraMats.view = lookAt(camera.cameraPos.position, camera.cameraPos.position + camera.cameraPos.front, camera.cameraPos.up);
 	camera.cameraMats.projection = glm::perspective(glm::radians(camera.cameraPos.zoom), (float)width / (float)height, .1f, 256.0f);
-	glm::mat4 tempModel;
-	camera.cameraMats.view = glm::translate(tempModel, glm::vec3(0.0f, 0.0f, 0.0f));
+	camera.cameraMats.model = translate(glm::mat4(), glm::vec3(0.0f, 0.0f, 2.0f));
 
 	void* destPointer;
 	VkResult error = vkMapMemory(logicalDevice, camera.memory, 0, sizeof(CameraMats), 0, &destPointer);
@@ -62,11 +61,11 @@ void PrepareCameraBuffers(VkDevice logicalDevice,
 CameraPos NewCameraPos()
 {
 	CameraPos cameraPos = {};
-	cameraPos.position = glm::vec3(0.0f);
+	cameraPos.position = glm::vec3(0.0f, 0.0f, -2.0f);
 	cameraPos.worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
-	cameraPos.yaw = -90.0f;
+	cameraPos.yaw = 0.0f;
 	cameraPos.pitch = 0.0f;
-	cameraPos.zoom = -30.0f;
+	cameraPos.zoom = 30.0f;
 
 	return cameraPos;
 }
