@@ -411,6 +411,17 @@ VkResult QueuePresent(const DeviceInfo* deviceInfo, const SurfaceInfo* surfaceIn
 	pInfo.waitSemaphoreCount = 1;
 	pInfo.pWaitSemaphores = &deviceInfo->renderComplete;
 	return QueuePresentKHR(deviceInfo->queue, &pInfo);
+}
 
 
+void DestroySurfaceInfo(VkInstance vkInstance, VkDevice device, SurfaceInfo* surfaceInfo)
+{
+	for (uint32_t i = 0; i < surfaceInfo->imageCount; i++)
+	{
+		vkDestroyImageView(device, surfaceInfo->views[i], nullptr);
+		vkDestroyImage(device, surfaceInfo->images[i], nullptr);
+	}
+	DestroySwapchainKHR(device, surfaceInfo->swapChain, nullptr);
+	vkDestroySurfaceKHR(vkInstance, surfaceInfo->surface, nullptr);
+	surfaceInfo = {};
 }

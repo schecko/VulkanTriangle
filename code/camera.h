@@ -4,6 +4,12 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/glm.hpp>
 
+const float PI = 3.1415926535897932384626433832795028841971f; //overkill but i like overkill
+const float ZOOM_MAX = PI / 6;
+const float ZOOM_MIN = PI / 3;
+const float ZOOM_SPEED = .2f;
+const float ANGLE_SPEED = PI / 12;
+
 //do not add anything to this struct, since its used in shader calculations as uniforms
 struct CameraMats
 {
@@ -47,4 +53,4 @@ void PrepareCameraBuffers(VkDevice logicalDevice,
 
 void UpdateCamera(VkDevice logicalDevice, Camera& camera, uint32_t width, uint32_t height);
 
-CameraPos NewCameraPos();
+CameraPos NewCameraPos(glm::vec3 initalPosition = glm::vec3(0.0f, 0.0f, 10.0f));

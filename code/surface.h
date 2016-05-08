@@ -37,3 +37,5 @@ void InitSwapChain(
 VkResult AcquireNextImage(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo);
 
 VkResult QueuePresent(const DeviceInfo* deviceInfo, const SurfaceInfo* surfaceInfo);
+
+void DestroySurfaceInfo(VkInstance vkInstance, VkDevice device, SurfaceInfo* surfaceInfo);

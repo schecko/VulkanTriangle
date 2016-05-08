@@ -9,24 +9,37 @@
 
 void UpdateCamera(VkDevice logicalDevice, Camera& camera, uint32_t width, uint32_t height)
 {
-	/*camera.cameraMats.projection = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 256.0f);
-	camera.cameraMats.view = glm::translate(glm::mat4(), glm::vec3(0.0f, 0.0f, zoom));
-	camera.cameraMats.model = glm::mat4();
-	camera.cameraMats.model = glm::rotate(camera.cameraMats.model, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-	camera.cameraMats.model = glm::rotate(camera.cameraMats.model, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-	camera.cameraMats.model = glm::rotate(camera.cameraMats.model, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));*/
+	//check zoom
+	if(camera.cameraPos.zoom > ZOOM_MAX)
+	{
+		camera.cameraPos.zoom = ZOOM_MAX;
+	}
+	if (camera.cameraPos.zoom < ZOOM_MIN)
+	{
+		camera.cameraPos.zoom = ZOOM_MIN;
+	}
+
+	//check pitch
+	if(camera.cameraPos.pitch > PI/2)
+	{
+		camera.cameraPos.pitch = PI / 2;
+	}
+	if(camera.cameraPos.pitch < -PI/2)
+	{
+		camera.cameraPos.pitch = -PI / 2;
+	}
 
 	glm::vec3 tempFront;
-	tempFront.x = cos(glm::radians(camera.cameraPos.yaw)) * cos(glm::radians(camera.cameraPos.pitch));
-	tempFront.y = sin(glm::radians(camera.cameraPos.pitch));
-	tempFront.z = sin(glm::radians(camera.cameraPos.yaw)) * cos(glm::radians(camera.cameraPos.pitch));
+	tempFront.x = cos(camera.cameraPos.yaw) * cos(camera.cameraPos.pitch);
+	tempFront.y = sin(camera.cameraPos.pitch);
+	tempFront.z = sin(camera.cameraPos.yaw) * cos(camera.cameraPos.pitch);
 	camera.cameraPos.front = glm::normalize(tempFront);
 	camera.cameraPos.right = glm::normalize(glm::cross(camera.cameraPos.front, camera.cameraPos.worldUp));
 	camera.cameraPos.up = glm::normalize(glm::cross(camera.cameraPos.right, camera.cameraPos.front));
 
 	camera.cameraMats.view = lookAt(camera.cameraPos.position, camera.cameraPos.position + camera.cameraPos.front, camera.cameraPos.up);
-	camera.cameraMats.projection = glm::perspective(glm::radians(camera.cameraPos.zoom), (float)width / (float)height, .1f, 256.0f);
-	camera.cameraMats.model = translate(glm::mat4(), glm::vec3(0.0f, 0.0f, 2.0f));
+	camera.cameraMats.projection = glm::perspective(camera.cameraPos.zoom, (float)width / (float)height, .1f, 256.0f);
+	camera.cameraMats.model = translate(glm::mat4(), glm::vec3(0.0f, 0.0f, 0.0f));
 
 	void* destPointer;
 	VkResult error = vkMapMemory(logicalDevice, camera.memory, 0, sizeof(CameraMats), 0, &destPointer);
@@ -58,14 +71,14 @@ void PrepareCameraBuffers(VkDevice logicalDevice,
 	UpdateCamera(logicalDevice, *camera, width, height);
 }
 
-CameraPos NewCameraPos()
+CameraPos NewCameraPos(glm::vec3 initalPosition)
 {
 	CameraPos cameraPos = {};
-	cameraPos.position = glm::vec3(0.0f, 0.0f, -2.0f);
+	cameraPos.position = initalPosition;
 	cameraPos.worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
-	cameraPos.yaw = 0.0f;
+	cameraPos.yaw = -PI / 2;
 	cameraPos.pitch = 0.0f;
-	cameraPos.zoom = 30.0f;
+	cameraPos.zoom = PI / 6;
 
 	return cameraPos;
 }

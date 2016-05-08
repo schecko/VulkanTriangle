@@ -11,8 +11,8 @@
 //TODO rename?
  struct DepthStencil
 {
-	VkImage image;
 	VkDeviceMemory mem;
+	VkImage image;
 	VkImageView view;
 };
 
@@ -64,12 +64,14 @@ struct DeviceInfo
 
 struct PipelineInfo
 {
+	std::vector<VkShaderModule> shaderModules;
 	VkRenderPass renderPass;
 	VkPipelineCache pipelineCache;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorSet descriptorSet;
 	VkPipelineLayout pipelineLayout;
 	VkDescriptorPool descriptorPool;
+
 	VkPipeline pipeline;
 };
 
@@ -152,9 +154,12 @@ StagingBuffer AllocBindDataToGPU(VkDevice logicalDevice, VkPhysicalDeviceMemoryP
 
 VkMemoryAllocateInfo NewMemoryAllocInfo(VkDevice logicalDevice, VkPhysicalDeviceMemoryProperties memoryProperties, VkBuffer buffer, uint32_t desiredAllocSize, VkFlags desiredMemoryProperties);
 
-void DestroyInstance(VkInstance vkInstance, VkDebugReportCallbackEXT debugReport);
+VkPipelineShaderStageCreateInfo NewShaderStageInfo(VkDevice logicalDevice, PipelineInfo* pipelineInfo, uint32_t* data, uint32_t dataSize, VkShaderStageFlagBits stage);
+
+void DestroyPipelineInfo(VkDevice device, PipelineInfo* pipelineInfo);
+
+void DestroyDeviceInfo(DeviceInfo* deviceInfo);
+
+void DestroyDebugInfo(VkInstance vkInstance, DebugInfo* debugInfo);
 
 void DestroyInstance(VkInstance vkInstance);
-
-VkPipelineShaderStageCreateInfo NewShaderStageInfo(VkDevice logicalDevice, uint32_t* data, uint32_t dataSize, VkShaderStageFlagBits stage);
-

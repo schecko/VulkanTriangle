@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <windows.h>
 #include <vector>
+#include <chrono>
 
 #include "commonvulkan.h"
 #include "surface.h"
@@ -12,8 +13,8 @@
 
 static const char* EXE_NAME = "VulkanTriangle";
 static const uint32_t VERTEX_BUFFER_BIND_ID = 0;
-static const float CAMERA_SPEED = 20;
-#define VALIDATION_LAYERS false
+static const float CAMERA_SPEED = 1.0f;
+#define VALIDATION_LAYERS true
 #define DEBUGGING true
 
 
@@ -70,6 +71,10 @@ struct MainMemory
 
 	Camera camera;
 	PipelineInfo pipelineInfo;
+
+	uint64_t frameNum;
+	double frameDuration;
+	double lastframeRate;
 
 
 };

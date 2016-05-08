@@ -41,3 +41,12 @@ inline void Assert(VkResult test, std::string message)
 	Assert(test == VK_SUCCESS, message);
 }
 
+inline void Message(std::string message)
+{
+	std::cout << message.c_str() << std::endl;
+}
+
+inline void Message(uint32_t message)
+{
+	std::cout << std::to_string(message).c_str() << std::endl;
+}

@@ -10,10 +10,12 @@
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
+#include <chrono>
 #include "commonvulkan.h"
 #include "commonwindows.h"
 #include "surface.h"
 #include "util.h"
+#include "camera.h"
 
 void PrepareVertexData(const DeviceInfo* deviceInfo, VkPhysicalDeviceMemoryProperties memoryProperties, VertexBuffer* vertexBuffer)
 {
@@ -99,7 +101,7 @@ void SetupCommandBuffers(DeviceInfo* deviceInfo,
 	deviceInfo->postPresentCmdBuffer = NewCommandBuffer(deviceInfo->device, deviceInfo->cmdPool);
 }
 
-VkPipeline NewPipeline(VkDevice logicalDevice, const PipelineInfo* pipelineInfo, VkPipelineVertexInputStateCreateInfo* vertexInputInfo)
+VkPipeline NewPipeline(VkDevice logicalDevice, PipelineInfo* pipelineInfo, VkPipelineVertexInputStateCreateInfo* vertexInputInfo)
 {
 
 	VkResult error;
@@ -122,7 +124,7 @@ VkPipeline NewPipeline(VkDevice logicalDevice, const PipelineInfo* pipelineInfo,
 	//color blend state (only one here)
 	VkPipelineColorBlendAttachmentState baState[1] = {};
 	baState[0].colorWriteMask = 0xf;
-	baState[0].blendEnable - VK_FALSE;
+	baState[0].blendEnable = VK_FALSE;
 
 	VkPipelineColorBlendStateCreateInfo cbInfo = {};
 	cbInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -168,8 +170,8 @@ VkPipeline NewPipeline(VkDevice logicalDevice, const PipelineInfo* pipelineInfo,
 	File fragmentShader = OpenFile("D:\\scottsdocs\\sourcecode\\VulkanTriangle\\code\\triangle.frag.spv");
 
 	VkPipelineShaderStageCreateInfo sInfo[2] = {};
-	sInfo[0] = NewShaderStageInfo(logicalDevice, (uint32_t*)vertexShader.data, vertexShader.size, VK_SHADER_STAGE_VERTEX_BIT);
-	sInfo[1] = NewShaderStageInfo(logicalDevice, (uint32_t*)fragmentShader.data, fragmentShader.size, VK_SHADER_STAGE_FRAGMENT_BIT);
+	sInfo[0] = NewShaderStageInfo(logicalDevice, pipelineInfo, (uint32_t*)vertexShader.data, vertexShader.size, VK_SHADER_STAGE_VERTEX_BIT);
+	sInfo[1] = NewShaderStageInfo(logicalDevice, pipelineInfo, (uint32_t*)fragmentShader.data, fragmentShader.size, VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	VkGraphicsPipelineCreateInfo pInfo = {};
 	pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -459,6 +461,8 @@ void Init(MainMemory* m)
 
 void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 {
+	static int frames = 0;
+	Message(frames++);
 	vkDeviceWaitIdle(deviceInfo->device);
 	VkResult error;
 	error = AcquireNextImage(deviceInfo, surfaceInfo);
@@ -531,6 +535,7 @@ void Update(MainMemory* m)
 	if(input.keys[keyW])
 	{
 		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
+		//Message(m->camera.cameraPos.position.z);
 	}
 	if (input.keys[keyS])
 	{
@@ -589,12 +594,16 @@ void PollEvents(HWND windowHandle)
 
 void Quit(MainMemory* m)
 {
+
     DestroyWindow(m->windowHandle);
+
+	DestroyPipelineInfo(m->deviceInfo.device, &m->pipelineInfo);
+	DestroySurfaceInfo(m->vkInstance, m->deviceInfo.device, &m->surfaceInfo);
+	DestroyDeviceInfo(&m->deviceInfo);
 #if VALIDATION_LAYERS
-	DestroyInstance(m->vkInstance, m->debugInfo.debugReport);
-#else
-	DestroyInstance(m->vkInstance);
+	DestroyDebugInfo(m->vkInstance, &m->debugInfo);
 #endif
+	DestroyInstance(m->vkInstance);
 }
 
 //app entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
@@ -605,9 +614,15 @@ int main(int argv, char** argc)
     Init(m);
     while (m->input.running)
     {
+		auto frameStartTime = std::chrono::high_resolution_clock::now();
         PollEvents(m->windowHandle);
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
+		auto frameEndTime = std::chrono::high_resolution_clock::now();
+		auto frameTimeDiff = std::chrono::duration<double, std::milli>(frameEndTime - frameStartTime).count();
+		m->frameDuration = (float)frameTimeDiff / 1000.0f;
+		m->lastframeRate = (m->lastframeRate + (1 / m->frameDuration)) / 2 ;
+		Message(m->lastframeRate);
     }
     Quit(m);
     delete m;

@@ -151,16 +151,6 @@ VkInstance NewVkInstance(const char* appName, std::vector<const char*>* instance
 	return vkInstance;
 }
 
-void DestroyInstance(VkInstance vkInstance, VkDebugReportCallbackEXT debugReport)
-{
-	//DestroyDebugReportCallbackEXT(vkInstance, debugReport, nullptr);
-	//vkDestroyInstance(vkInstance, nullptr);
-}
-void DestroyInstance(VkInstance vkInstance)
-{
-	vkDestroyInstance(vkInstance, nullptr);
-}
-
 //fill the gpuCount param with the number of physical devices available to the program, and return a pointer to a vector containing the physical devices
 //returns a vector of the physical devices handles.
 std::vector<VkPhysicalDevice> EnumeratePhysicalDevices(VkInstance vkInstance, uint32_t* gpuCount)
@@ -717,12 +707,63 @@ VkShaderModule NewShaderModule(VkDevice logicalDevice, uint32_t* data , uint32_t
 	return shaderModule;
 }
 
-VkPipelineShaderStageCreateInfo NewShaderStageInfo(VkDevice logicalDevice, uint32_t* data, uint32_t dataSize, VkShaderStageFlagBits stage)
+VkPipelineShaderStageCreateInfo NewShaderStageInfo(VkDevice logicalDevice, PipelineInfo* pipelineInfo, uint32_t* data, uint32_t dataSize, VkShaderStageFlagBits stage)
 {
+	VkShaderModule module = NewShaderModule(logicalDevice, data, dataSize);
+	pipelineInfo->shaderModules.push_back(module);
 	VkPipelineShaderStageCreateInfo sInfo = {};
 	sInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	sInfo.stage = stage;
-	sInfo.module = NewShaderModule(logicalDevice, data, dataSize);
+	sInfo.module = module;
 	sInfo.pName = "main";
 	return sInfo;
+}
+
+void DestroyPipelineInfo(VkDevice device, PipelineInfo* pipelineInfo)
+{
+	vkDestroyDescriptorPool(device, pipelineInfo->descriptorPool, nullptr);
+	vkDestroyRenderPass(device, pipelineInfo->renderPass, nullptr);
+	for(auto& shaderModule : pipelineInfo->shaderModules)
+	{
+		vkDestroyShaderModule(device, shaderModule, nullptr);
+	}
+	vkDestroyPipelineCache(device, pipelineInfo->pipelineCache, nullptr);
+	pipelineInfo = {};
+}
+
+void DestroyDeviceInfo(DeviceInfo* deviceInfo)
+{
+
+	vkFreeCommandBuffers(deviceInfo->device, deviceInfo->cmdPool, deviceInfo->drawCmdBuffers.size(), deviceInfo->drawCmdBuffers.data());
+	vkFreeCommandBuffers(deviceInfo->device, deviceInfo->cmdPool, 1, &deviceInfo->prePresentCmdBuffer);
+	vkFreeCommandBuffers(deviceInfo->device, deviceInfo->cmdPool, 1, &deviceInfo->postPresentCmdBuffer);
+	vkFreeCommandBuffers(deviceInfo->device, deviceInfo->cmdPool, 1, &deviceInfo->setupCmdBuffer);
+
+	for (uint32_t i = 0; i < deviceInfo->frameBuffers.size(); i++)
+	{
+		vkDestroyFramebuffer(deviceInfo->device, deviceInfo->frameBuffers[i], nullptr);
+	}
+
+	vkDestroyImageView(deviceInfo->device, deviceInfo->depthStencil.view, nullptr);
+	vkDestroyImage(deviceInfo->device, deviceInfo->depthStencil.image, nullptr);
+	vkFreeMemory(deviceInfo->device, deviceInfo->depthStencil.mem, nullptr);
+
+	vkDestroyCommandPool(deviceInfo->device, deviceInfo->cmdPool, nullptr);
+
+	vkDestroySemaphore(deviceInfo->device, deviceInfo->presentComplete, nullptr);
+	vkDestroySemaphore(deviceInfo->device, deviceInfo->renderComplete, nullptr);
+
+	vkDestroyDevice(deviceInfo->device, nullptr);
+	deviceInfo = {};
+}
+
+void DestroyDebugInfo(VkInstance vkInstance, DebugInfo* debugInfo)
+{
+	DestroyDebugReportCallbackEXT(vkInstance, debugInfo->debugReport, nullptr);
+	debugInfo = {};
+}
+
+void DestroyInstance(VkInstance vkInstance)
+{
+	vkDestroyInstance(vkInstance, nullptr);
 }
