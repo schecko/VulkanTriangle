@@ -66,7 +66,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	reportMessage += layerPrefix;
 	reportMessage += "] ";
 	reportMessage += msg;
-	Message(reportMessage.c_str());
 
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{

@@ -52,9 +52,7 @@ struct MainMemory
 {
 	HWND consoleHandle;
 	WindowInfo windowInfo;
-
-	float dt;
-	float lastFrameTime;
+	TimerInfo timerInfo;
 
 	Input input;
 
@@ -70,9 +68,6 @@ struct MainMemory
 	Camera camera;
 	PipelineInfo pipelineInfo;
 
-	uint64_t frameNum;
-	double frameDuration;
-	double lastframeRate;
 
 
 };

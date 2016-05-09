@@ -15,8 +15,46 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\code\Win64_VulkanTriangle.cpp">
+    <ClCompile Include="..\code\commonvulkan.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\code\commonwindows.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\code\win64_vulkantriangle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\code\surface.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\code\camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\code\timer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\code\win64_vulkantriangle.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\code\commonvulkan.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\code\commonwindows.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\code\util.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\code\surface.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\code\camera.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\code\timer.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

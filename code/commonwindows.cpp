@@ -165,6 +165,39 @@ File OpenFile(std::string fileName)
 		}
 	}
 	Assert(file.data != nullptr, "could not read file");
-	return file;
+	return file;	
+}
+
+TimerInfo NewTimerInfo()
+{
+	TimerInfo timerInfo = {};
+	LARGE_INTEGER clocksPerSec;
+	QueryPerformanceFrequency(&clocksPerSec);
+	timerInfo.clocksPerSec = clocksPerSec.QuadPart;
+	return timerInfo;
+}
+
+void UpdateTimer(TimerInfo* timerInfo)
+{
+	timerInfo->numFrames++;
+
+	LARGE_INTEGER clockCount;
+	QueryPerformanceCounter(&clockCount);
+
+	uint64_t frameClocks = clockCount.QuadPart - timerInfo->lastFrameClockCount;
+	timerInfo->lastFrameClockCount = clockCount.QuadPart;
 	
+	timerInfo->framesPerSec[timerInfo->numFrames % 10] = timerInfo->clocksPerSec / frameClocks;
+}
+
+uint64_t GetAvgFps(const TimerInfo* timerInfo)
+{
+	uint64_t avgFps = 0;
+	for (uint32_t i = 0; i < 10; i++)
+	{
+		avgFps += timerInfo->framesPerSec[i];
+	}
+	avgFps /= 10;
+
+	return avgFps;
 }

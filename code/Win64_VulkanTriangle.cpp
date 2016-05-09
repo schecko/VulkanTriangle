@@ -331,6 +331,7 @@ void Init(MainMemory* m)
     m->consoleHandle = GetConsoleWindow();
     //ShowWindow(m->consoleHandle, SW_HIDE);
 	m->camera.cameraPos = NewCameraPos();
+	m->timerInfo = NewTimerInfo();
 
     m->windowInfo = NewWindowInfo(EXE_NAME, &m->input, 1200, 800);
 	//ShowWindow(m->windowHandle, SW_HIDE);
@@ -459,8 +460,6 @@ void Init(MainMemory* m)
 
 void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 {
-	static int frames = 0;
-	Message(frames++);
 	vkDeviceWaitIdle(deviceInfo->device);
 	VkResult error;
 	error = AcquireNextImage(deviceInfo, surfaceInfo);
@@ -523,12 +522,13 @@ void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 	Assert(error, "could not present queue in update and render");
 
 	vkDeviceWaitIdle(deviceInfo->device);
+
 }
 
 void Update(MainMemory* m)
 {
 	Input input = m->input;
-	float speed = CAMERA_SPEED * m->dt;
+	float speed = CAMERA_SPEED;
 	if(input.keys[keyW])
 	{
 		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
@@ -579,7 +579,7 @@ void PollEvents(const WindowInfo* windowInfo)
 #else
 	for (int i = 0; i < 20; i++)
 	{	
-		if (!PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE))
+		if (!PeekMessage(&msg, windInfo->windowHandle, 0, 0, PM_REMOVE))
 		{
 			break;
 		}
@@ -603,7 +603,7 @@ void Quit(MainMemory* m)
 	DestroyInstance(m->vkInstance);
 }
 
-//app entrypoint, replacing with winmain seems redundant to me (plus its function signature is annoying to remember)
+
 int main(int argv, char** argc)
 {
 
@@ -611,15 +611,11 @@ int main(int argv, char** argc)
     Init(m);
     while (m->input.running)
     {
-		auto frameStartTime = std::chrono::high_resolution_clock::now();
         PollEvents(&m->windowInfo);
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
-		auto frameEndTime = std::chrono::high_resolution_clock::now();
-		auto frameTimeDiff = std::chrono::duration<double, std::milli>(frameEndTime - frameStartTime).count();
-		m->frameDuration = (float)frameTimeDiff / 1000.0f;
-		m->lastframeRate = (m->lastframeRate + (1 / m->frameDuration)) / 2 ;
-		Message(m->frameDuration);
+		UpdateTimer(&m->timerInfo);
+		Message(GetAvgFps(&m->timerInfo));
     }
     Quit(m);
     delete m;

@@ -1,3 +1,11 @@
-﻿  Win64_VulkanTriangle.cpp
+﻿  commonwindows.cpp
+d:\scottsdocs\sourcecode\vulkantriangle\code\commonwindows.cpp(55): warning C4800: 'BOOL': forcing value to bool 'true' or 'false' (performance warning)
+d:\scottsdocs\sourcecode\vulkantriangle\code\commonwindows.cpp(149): warning C4244: 'initializing': conversion from 'LONGLONG' to 'uint32_t', possible loss of data
+  Generating Code...
+  Skipping... (no relevant changes detected)
+  win64_vulkantriangle.cpp
+  surface.cpp
+  commonvulkan.cpp
+  camera.cpp
   VulkanTriangle.vcxproj -> D:\scottsdocs\sourcecode\VulkanTriangle\VulkanTriangle\x64\Debug\VulkanTriangle.exe
   VulkanTriangle.vcxproj -> D:\scottsdocs\sourcecode\VulkanTriangle\VulkanTriangle\x64\Debug\VulkanTriangle.pdb (Partial PDB)

@@ -3,6 +3,7 @@
 #include <string>
 #include <vulkan/vulkan.h>
 #include <iostream>
+#include "win64_vulkantriangle.h"
 
 //helper macros for annoying function pointers
 #define GET_VULKAN_FUNCTION_POINTER_INST(inst, function)							\
@@ -28,7 +29,7 @@ inline void Message(std::string message)
 #endif
 }
 
-inline void Message(uint32_t message)
+inline void Message(uint64_t message)
 {
 	std::string msg = std::to_string(message) + "\n";
 	fprintf(stdout, msg.c_str());

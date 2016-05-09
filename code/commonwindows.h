@@ -120,6 +120,14 @@ struct Input
 	glm::vec2 lastMousePos;
 	bool mouseInWindow;
 	TRACKMOUSEEVENT mouseEvent;
+};
+
+struct TimerInfo
+{
+	uint64_t clocksPerSec;
+	uint64_t framesPerSec[10];
+	uint64_t numFrames;
+	uint64_t lastFrameClockCount;
 
 };
 
@@ -128,3 +136,9 @@ WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidt
 File OpenFile(std::string fileName);
 
 void DestroyWindowInfo(WindowInfo* windowInfo);
+
+TimerInfo NewTimerInfo();
+
+void UpdateTimer(TimerInfo* timerInfo);
+
+uint64_t GetAvgFps(const TimerInfo* timerInfo);

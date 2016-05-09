@@ -72,7 +72,7 @@
     <IncludePath>D:\appdata\vulkan\1.0.3.1\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\appdata\vulkan\1.0.8.0\Include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\appdata\vulkan\1.0.8.0\Include;D:\scottsdocs\sourcecode\VulkanTriangle\inc;$(PATH);$(IncludePath)</IncludePath>
     <LibraryPath>D:\appdata\vulkan\1.0.8.0\Bin;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -122,7 +122,21 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\code\Win64_VulkanTriangle.cpp" />
+    <ClCompile Include="..\code\camera.cpp" />
+    <ClCompile Include="..\code\commonvulkan.cpp" />
+    <ClCompile Include="..\code\commonwindows.cpp" />
+    <ClCompile Include="..\code\surface.cpp" />
+    <ClCompile Include="..\code\timer.cpp" />
+    <ClCompile Include="..\code\win64_vulkantriangle.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\code\camera.h" />
+    <ClInclude Include="..\code\commonvulkan.h" />
+    <ClInclude Include="..\code\commonwindows.h" />
+    <ClInclude Include="..\code\surface.h" />
+    <ClInclude Include="..\code\timer.h" />
+    <ClInclude Include="..\code\util.h" />
+    <ClInclude Include="..\code\win64_vulkantriangle.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
