@@ -330,11 +330,9 @@ void Init(MainMemory* m)
     m->input.running = true;
     m->consoleHandle = GetConsoleWindow();
     //ShowWindow(m->consoleHandle, SW_HIDE);
-    m->clientWidth = 1200;
-    m->clientHeight = 800;
 	m->camera.cameraPos = NewCameraPos();
 
-    m->windowHandle = NewWindow(EXE_NAME, &m->input, m->clientWidth, m->clientHeight);
+    m->windowInfo = NewWindowInfo(EXE_NAME, &m->input, 1200, 800);
 	//ShowWindow(m->windowHandle, SW_HIDE);
 
 #if VALIDATION_LAYERS
@@ -359,7 +357,7 @@ void Init(MainMemory* m)
 #if VALIDATION_LAYERS
 	CreateDebugCallback(m->vkInstance, &m->debugInfo.debugReport);
 #endif
-    m->surfaceInfo.surface = NewSurface(m->windowHandle, m->exeHandle, m->vkInstance);
+    m->surfaceInfo.surface = NewSurface(&m->windowInfo, m->vkInstance);
 
 
     uint32_t gpuCount;
@@ -406,12 +404,12 @@ void Init(MainMemory* m)
 
     m->deviceInfo.cmdPool = NewCommandPool(m->deviceInfo.device, m->physDeviceInfo.renderingQueueFamilyIndex);
     m->deviceInfo.setupCmdBuffer = NewSetupCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
-    InitSwapChain(&m->deviceInfo, m->physDeviceInfo.physicalDevice, &m->surfaceInfo, &m->clientWidth, &m->clientHeight);
+    InitSwapChain(&m->deviceInfo, m->physDeviceInfo.physicalDevice, &m->surfaceInfo, &m->windowInfo.clientWidth, &m->windowInfo.clientHeight);
 	SetupCommandBuffers(&m->deviceInfo, m->surfaceInfo.imageCount);
 	setupDepthStencil(&m->deviceInfo,
 		&m->physDeviceInfo,
-		m->clientWidth,
-		m->clientHeight);
+		m->windowInfo.clientWidth,
+		m->windowInfo.clientHeight);
 
 	m->pipelineInfo.renderPass = NewRenderPass(m->deviceInfo.device, 
 		m->surfaceInfo.colorFormat, 
@@ -423,8 +421,8 @@ void Init(MainMemory* m)
 		m->pipelineInfo.renderPass, 
 		m->deviceInfo.depthStencil.view, 
 		m->surfaceInfo.imageCount, 
-		m->clientWidth, 
-		m->clientHeight);
+		m->windowInfo.clientWidth, 
+		m->windowInfo.clientHeight);
 	//TODO why does the setup cmd buffer need to be flushed and recreated?
 	FlushSetupCommandBuffer(&m->deviceInfo);
 	m->deviceInfo.setupCmdBuffer = NewSetupCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
@@ -444,8 +442,8 @@ void Init(MainMemory* m)
 	PrepareCameraBuffers(m->deviceInfo.device,
 		m->physDeviceInfo.memoryProperties, 
 		&m->camera, 
-		m->clientWidth, 
-		m->clientHeight, 
+		m->windowInfo.clientWidth, 
+		m->windowInfo.clientHeight, 
 		-2.0f, 
 		glm::vec3(40.0f, 0.0f, 0.0f));
 
@@ -454,7 +452,7 @@ void Init(MainMemory* m)
 	m->pipelineInfo.pipeline = NewPipeline(m->deviceInfo.device, &m->pipelineInfo, &m->vertexBuffer.viInfo);
 	m->pipelineInfo.descriptorPool = PrepareDescriptorPool(m->deviceInfo.device);
 	m->pipelineInfo.descriptorSet = NewDescriptorSet(m->deviceInfo.device, &m->pipelineInfo, m->camera.desc);
-	BuildCmdBuffers(&m->deviceInfo, &m->pipelineInfo, &m->surfaceInfo, &m->vertexBuffer, m->clientWidth, m->clientHeight);
+	BuildCmdBuffers(&m->deviceInfo, &m->pipelineInfo, &m->surfaceInfo, &m->vertexBuffer, m->windowInfo.clientWidth, m->windowInfo.clientHeight);
 
 }
 
@@ -530,7 +528,6 @@ void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 void Update(MainMemory* m)
 {
 	Input input = m->input;
-	m->dt = 1;
 	float speed = CAMERA_SPEED * m->dt;
 	if(input.keys[keyW])
 	{
@@ -566,15 +563,15 @@ void Update(MainMemory* m)
 
 
 
-	UpdateCamera(m->deviceInfo.device, m->camera, m->clientWidth, m->clientHeight);
+	UpdateCamera(m->deviceInfo.device, m->camera, m->windowInfo.clientWidth, m->windowInfo.clientHeight);
 	
 }
 
-void PollEvents(HWND windowHandle)
+void PollEvents(const WindowInfo* windowInfo)
 {
     MSG msg;
-#if 0
-    while (PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE))
+#if 1
+    while (PeekMessage(&msg, windowInfo->windowHandle, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -595,7 +592,7 @@ void PollEvents(HWND windowHandle)
 void Quit(MainMemory* m)
 {
 
-    DestroyWindow(m->windowHandle);
+    DestroyWindowInfo(&m->windowInfo);
 
 	DestroyPipelineInfo(m->deviceInfo.device, &m->pipelineInfo);
 	DestroySurfaceInfo(m->vkInstance, m->deviceInfo.device, &m->surfaceInfo);
@@ -615,14 +612,14 @@ int main(int argv, char** argc)
     while (m->input.running)
     {
 		auto frameStartTime = std::chrono::high_resolution_clock::now();
-        PollEvents(m->windowHandle);
+        PollEvents(&m->windowInfo);
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
 		auto frameEndTime = std::chrono::high_resolution_clock::now();
 		auto frameTimeDiff = std::chrono::duration<double, std::milli>(frameEndTime - frameStartTime).count();
 		m->frameDuration = (float)frameTimeDiff / 1000.0f;
 		m->lastframeRate = (m->lastframeRate + (1 / m->frameDuration)) / 2 ;
-		Message(m->lastframeRate);
+		Message(m->frameDuration);
     }
     Quit(m);
     delete m;

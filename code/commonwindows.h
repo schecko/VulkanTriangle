@@ -103,7 +103,13 @@ struct File
 		InputCodesSize
 	};
 
-
+struct WindowInfo
+{
+	const char* AppName;
+	HWND windowHandle;
+	HINSTANCE exeHandle;
+	uint32_t clientWidth, clientHeight;
+};
 
 
 struct Input
@@ -117,6 +123,8 @@ struct Input
 
 };
 
-HWND NewWindow(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight);
+WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight);
 
 File OpenFile(std::string fileName);
+
+void DestroyWindowInfo(WindowInfo* windowInfo);

@@ -5,6 +5,7 @@
 #include "util.h"
 #include <vector>
 #include "win64_vulkantriangle.h"
+#include "commonwindows.h"
 
 //function pointers
 PFN_vkGetPhysicalDeviceSurfaceSupportKHR GetPhysicalDeviceSurfaceSupportKHR = nullptr;
@@ -25,14 +26,14 @@ PFN_vkQueuePresentKHR QueuePresentKHR = nullptr;
 
 
 
-VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkInstance)
+VkSurfaceKHR NewSurface(const WindowInfo* window, VkInstance vkInstance)
 {
 	VkResult error;
 	VkSurfaceKHR surface;
 	VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {};
 	surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-	surfaceCreateInfo.hinstance = exeHandle;
-	surfaceCreateInfo.hwnd = windowHandle;
+	surfaceCreateInfo.hinstance = window->exeHandle;
+	surfaceCreateInfo.hwnd = window->windowHandle;
 	error = vkCreateWin32SurfaceKHR(vkInstance,
 		&surfaceCreateInfo,
 		nullptr,
@@ -421,7 +422,8 @@ void DestroySurfaceInfo(VkInstance vkInstance, VkDevice device, SurfaceInfo* sur
 		vkDestroyImageView(device, surfaceInfo->views[i], nullptr);
 		vkDestroyImage(device, surfaceInfo->images[i], nullptr);
 	}
-	DestroySwapchainKHR(device, surfaceInfo->swapChain, nullptr);
 	vkDestroySurfaceKHR(vkInstance, surfaceInfo->surface, nullptr);
+	//DestroySwapchainKHR(device, surfaceInfo->swapChain, nullptr);
+
 	surfaceInfo = {};
 }

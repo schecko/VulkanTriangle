@@ -13,8 +13,8 @@
 
 static const char* EXE_NAME = "VulkanTriangle";
 static const uint32_t VERTEX_BUFFER_BIND_ID = 0;
-static const float CAMERA_SPEED = 1.0f;
-#define VALIDATION_LAYERS true
+static const float CAMERA_SPEED = 0.001f;
+#define VALIDATION_LAYERS false
 #define DEBUGGING true
 
 
@@ -51,9 +51,7 @@ struct VertexBuffer
 struct MainMemory
 {
 	HWND consoleHandle;
-	HWND windowHandle;
-	HINSTANCE exeHandle;
-	uint32_t clientWidth, clientHeight;
+	WindowInfo windowInfo;
 
 	float dt;
 	float lastFrameTime;

@@ -39,17 +39,17 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	std::string reportMessage;
 	if (flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
 	{
-		//reportMessage += "DEBUG: ";
+		reportMessage += "DEBUG: ";
 
 	}
 	if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
 	{
-		//reportMessage += "WARNING: ";
+		reportMessage += "WARNING: ";
 
 	}
 	if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
 	{
-		//reportMessage += "PERFORMANCE WARNING: ";
+		reportMessage += "PERFORMANCE WARNING: ";
 	}
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
@@ -59,17 +59,18 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
 	{
 
-		//reportMessage += "INFORMATION: ";
+		reportMessage += "INFORMATION: ";
 	}
 
+	reportMessage += "@[";
+	reportMessage += layerPrefix;
+	reportMessage += "] ";
+	reportMessage += msg;
+	Message(reportMessage.c_str());
 
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
-		reportMessage += "@[";
-		reportMessage += layerPrefix;
-		reportMessage += "] ";
-		reportMessage += msg;
-		std::cout << reportMessage.c_str() << std::endl;
+
 		Assert(0, "error in VK");
 		return true;
 

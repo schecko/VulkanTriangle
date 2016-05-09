@@ -22,7 +22,6 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 		case WM_CLOSE:
 			{
 				input->running = false;
-				return 0;
 			}
 			break;
 		case WM_IME_KEYUP:
@@ -34,8 +33,8 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 				{
 					input->keys[wP] = false;
 				}
-				return 0;
 			}
+			break;
 		case WM_IME_KEYDOWN:
 		case WM_KEYDOWN:
 			{
@@ -45,7 +44,6 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 				{
 					input->keys[wP] = true;
 				}
-				return 0;
 			}
 			break;
 		case WM_MOUSEMOVE:
@@ -59,6 +57,16 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 				input->mousePos = glm::vec2((float)GET_X_LPARAM(lP), (float)GET_Y_LPARAM(lP));
 			}
 			break;
+		case WM_LBUTTONDOWN:
+		{
+			input->keys[lMouse] = true;
+		}
+		break;
+		case WM_LBUTTONUP:
+		{
+			input->keys[lMouse] = false;
+		}
+		break;
 		default:
 			{
 				return DefWindowProc(hwnd, msg, wP, lP);
@@ -69,9 +77,10 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 
 //create a windows window, pass a pointer to a struct for input events
 //returns a handle to the created window.
-HWND NewWindow(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight)
+WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight)
 {
 
+	WindowInfo windowInfo;
 
 	WNDCLASS wc = {};
 
@@ -109,9 +118,20 @@ HWND NewWindow(const char* appName, void* pointer, uint32_t clientWidth, uint32_
 
 	ShowWindow(windowHandle, SW_SHOW);
 
-	return windowHandle;
+	windowInfo.AppName = appName;
+	windowInfo.windowHandle = windowHandle;
+	windowInfo.clientWidth = clientWidth;
+	windowInfo.clientHeight = clientHeight;
+	windowInfo.exeHandle = GetModuleHandle(nullptr);
+
+	return windowInfo;
 }
 
+void DestroyWindowInfo(WindowInfo* windowInfo)
+{
+	DestroyWindow(windowInfo->windowHandle);
+	windowInfo = {};
+}
 
 
 

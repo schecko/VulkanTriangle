@@ -17,6 +17,23 @@
 	Assert(function != nullptr, "could not find function "#function);				\
 }																					\
 
+
+inline void Message(std::string message)
+{
+	message += "\n";
+#if 1
+	fprintf(stdout, message.c_str());
+#else
+	std::cout << message.c_str() << std::endl;
+#endif
+}
+
+inline void Message(uint32_t message)
+{
+	std::string msg = std::to_string(message) + "\n";
+	fprintf(stdout, msg.c_str());
+}
+
 //assert the test is true, if test is false the console is moved to the focus,
 //the message is printed out and execution halts using std::cin rather than abort() or nullptr errors
 inline void Assert(bool test, std::string message)
@@ -28,8 +45,7 @@ inline void Assert(bool test, std::string message)
 		HWND consoleHandle = GetConsoleWindow();
 		ShowWindow(consoleHandle, SW_SHOW);
 		SetFocus(consoleHandle);
-		std::cout << message.c_str() << std::endl;
-		std::cout << "Type anything and press enter if you wish to continue anyway; best to exit though." << std::endl;
+		Message(message);
 		std::cin >> x;
 		//ShowWindow(consoleHandle, SW_HIDE);
 	}
@@ -41,12 +57,3 @@ inline void Assert(VkResult test, std::string message)
 	Assert(test == VK_SUCCESS, message);
 }
 
-inline void Message(std::string message)
-{
-	std::cout << message.c_str() << std::endl;
-}
-
-inline void Message(uint32_t message)
-{
-	std::cout << std::to_string(message).c_str() << std::endl;
-}

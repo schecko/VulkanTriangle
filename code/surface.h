@@ -4,7 +4,9 @@
 #include <windows.h>
 #include <vulkan/vulkan.h>
 #include "commonvulkan.h"
+#include "commonwindows.h"
 
+struct WindowInfo;
 //todo remove cyclic dependance
 struct DeviceInfo;
 
@@ -20,7 +22,7 @@ struct SurfaceInfo
 	uint32_t currentBuffer;
 };
 
-VkSurfaceKHR NewSurface(HWND windowHandle, HINSTANCE exeHandle, VkInstance vkInstance);
+VkSurfaceKHR NewSurface(const WindowInfo* window, VkInstance vkInstance);
 
 uint32_t FindGraphicsQueueFamilyIndex(VkPhysicalDevice vkPhysicalDevice, VkSurfaceKHR surface);
 
