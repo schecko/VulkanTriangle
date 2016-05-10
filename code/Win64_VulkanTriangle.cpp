@@ -528,7 +528,7 @@ void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 void Update(MainMemory* m)
 {
 	Input input = m->input;
-	float speed = CAMERA_SPEED;
+	float speed = CAMERA_SPEED * m->timerInfo.deltaFrameClocks;
 	if(input.keys[keyW])
 	{
 		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
@@ -614,7 +614,7 @@ int main(int argv, char** argc)
         PollEvents(&m->windowInfo);
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
-		UpdateTimer(&m->timerInfo);
+		SleepUpdateTimer(&m->timerInfo, 60);
 		Message(GetAvgFps(&m->timerInfo));
     }
     Quit(m);

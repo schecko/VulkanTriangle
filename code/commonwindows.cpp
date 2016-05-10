@@ -177,17 +177,11 @@ TimerInfo NewTimerInfo()
 	return timerInfo;
 }
 
-void UpdateTimer(TimerInfo* timerInfo)
+uint64_t GetClockCount()
 {
-	timerInfo->numFrames++;
-
 	LARGE_INTEGER clockCount;
 	QueryPerformanceCounter(&clockCount);
-
-	uint64_t frameClocks = clockCount.QuadPart - timerInfo->lastFrameClockCount;
-	timerInfo->lastFrameClockCount = clockCount.QuadPart;
-	
-	timerInfo->framesPerSec[timerInfo->numFrames % 10] = timerInfo->clocksPerSec / frameClocks;
+	return clockCount.QuadPart;
 }
 
 uint64_t GetAvgFps(const TimerInfo* timerInfo)
@@ -200,4 +194,44 @@ uint64_t GetAvgFps(const TimerInfo* timerInfo)
 	avgFps /= 10;
 
 	return avgFps;
+}
+
+void SleepUpdateTimer(TimerInfo* timerInfo, uint32_t desiredFps)
+{
+
+	uint64_t preSleepDeltaFrameClocks = GetClockCount() - timerInfo->lastFrameClockCount;
+
+
+	TIMECAPS timeCaps;
+	timeGetDevCaps(&timeCaps, sizeof(timeCaps));
+	uint64_t clockResolutonMilliSec = timeCaps.wPeriodMax;
+
+
+	double desiredDeltaFrameTime = 1.0f / (double)desiredFps;
+	double preSleepDeltaFrameTime = (double)preSleepDeltaFrameClocks / (double)timerInfo->clocksPerSec;
+
+	uint64_t frameRemainderTimeMilliSec = (uint64_t)(desiredDeltaFrameTime - preSleepDeltaFrameTime) * 1000;
+	
+	if(frameRemainderTimeMilliSec > clockResolutonMilliSec)
+	{
+		//frameRemaindertime is greater than clock resolution AND positive, so it can sleep.
+		//calculate the sleeptime which is the lowest granularity value of frameRemaindertime that will still guarantee that
+		//the sleep function wont accidentally sleep over the desireddeltaframetime.
+		uint64_t sleepTimeMilliSec = frameRemainderTimeMilliSec - (frameRemainderTimeMilliSec % clockResolutonMilliSec);
+		Sleep((uint32_t)sleepTimeMilliSec);
+	}
+	else if(frameRemainderTimeMilliSec < 0)
+	{
+		Message("COULD NOT REACH DESIRED FPS");
+		//TODO heavier error warning or something?
+	}else
+	{
+		//do nothing, just barely met framerate
+	}
+
+	uint64_t postSleepClocks = GetClockCount();
+	timerInfo->deltaFrameClocks = postSleepClocks - timerInfo->lastFrameClockCount;
+	timerInfo->lastFrameClockCount = postSleepClocks;
+	timerInfo->framesPerSec[timerInfo->numFrames % 10] = timerInfo->clocksPerSec / timerInfo->deltaFrameClocks;
+	timerInfo->numFrames++;
 }

@@ -128,6 +128,7 @@ struct TimerInfo
 	uint64_t framesPerSec[10];
 	uint64_t numFrames;
 	uint64_t lastFrameClockCount;
+	uint64_t deltaFrameClocks;
 
 };
 
@@ -139,6 +140,8 @@ void DestroyWindowInfo(WindowInfo* windowInfo);
 
 TimerInfo NewTimerInfo();
 
-void UpdateTimer(TimerInfo* timerInfo);
-
 uint64_t GetAvgFps(const TimerInfo* timerInfo);
+
+uint64_t GetClockCount();
+
+void SleepUpdateTimer(TimerInfo* timerInfo, uint32_t desiredFps);
