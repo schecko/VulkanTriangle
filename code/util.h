@@ -35,6 +35,12 @@ inline void Message(uint64_t message)
 	fprintf(stdout, msg.c_str());
 }
 
+inline void Message(double message)
+{
+	std::string msg = std::to_string(message) + "\n";
+	fprintf(stdout, msg.c_str());
+}
+
 //assert the test is true, if test is false the console is moved to the focus,
 //the message is printed out and execution halts using std::cin rather than abort() or nullptr errors
 inline void Assert(bool test, std::string message)

@@ -528,7 +528,7 @@ void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 void Update(MainMemory* m)
 {
 	Input input = m->input;
-	float speed = CAMERA_SPEED * m->timerInfo.deltaFrameClocks;
+	float speed = CAMERA_SPEED * m->timerInfo.frameTimeMilliSec;
 	if(input.keys[keyW])
 	{
 		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
@@ -591,7 +591,7 @@ void PollEvents(const WindowInfo* windowInfo)
 
 void Quit(MainMemory* m)
 {
-
+	DestroyTimerInfo(&m->timerInfo);
     DestroyWindowInfo(&m->windowInfo);
 
 	DestroyPipelineInfo(m->deviceInfo.device, &m->pipelineInfo);
@@ -611,11 +611,24 @@ int main(int argv, char** argc)
     Init(m);
     while (m->input.running)
     {
+		Tick(&m->timerInfo);
+		int64_t startCounter = GetClockCount();
         PollEvents(&m->windowInfo);
+		
+		for (int i = 0; i < 1000; i++)
+		{
+			for (int j = 0; j < 1000; j++)
+			{
+				int you = i * j;
+			}
+		}
+
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
-		SleepUpdateTimer(&m->timerInfo, 60);
+		Tock(&m->timerInfo);
+		Sleep(&m->timerInfo, 15);
 		Message(GetAvgFps(&m->timerInfo));
+
     }
     Quit(m);
     delete m;

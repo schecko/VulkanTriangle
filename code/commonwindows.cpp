@@ -174,15 +174,23 @@ TimerInfo NewTimerInfo()
 	LARGE_INTEGER clocksPerSec;
 	QueryPerformanceFrequency(&clocksPerSec);
 	timerInfo.clocksPerSec = clocksPerSec.QuadPart;
+
+	TIMECAPS timeCaps;
+	timeGetDevCaps(&timeCaps, sizeof(timeCaps));
+
+	timeBeginPeriod(timeCaps.wPeriodMin);
+	timerInfo.clockReslution = timeCaps.wPeriodMin;
 	return timerInfo;
 }
 
-uint64_t GetClockCount()
+int64_t GetClockCount()
 {
 	LARGE_INTEGER clockCount;
 	QueryPerformanceCounter(&clockCount);
 	return clockCount.QuadPart;
 }
+
+
 
 uint64_t GetAvgFps(const TimerInfo* timerInfo)
 {
@@ -196,31 +204,33 @@ uint64_t GetAvgFps(const TimerInfo* timerInfo)
 	return avgFps;
 }
 
-void SleepUpdateTimer(TimerInfo* timerInfo, uint32_t desiredFps)
+void Tick(TimerInfo* timerInfo)
 {
+	timerInfo->startClocks = GetClockCount();
+	timerInfo->numFrames++;
+}
 
-	uint64_t preSleepDeltaFrameClocks = GetClockCount() - timerInfo->lastFrameClockCount;
+void Tock(TimerInfo* timerInfo)
+{
+	timerInfo->endClocks = GetClockCount();
+	int64_t frameClocks = timerInfo->endClocks - timerInfo->startClocks;
+	timerInfo->frameTimeMilliSec = (1000 * frameClocks) / timerInfo->clocksPerSec;
+	timerInfo->framesPerSec[timerInfo->numFrames % 10] = (float)timerInfo->clocksPerSec / (float)frameClocks;
+}
 
-
-	TIMECAPS timeCaps;
-	timeGetDevCaps(&timeCaps, sizeof(timeCaps));
-	uint64_t clockResolutonMilliSec = timeCaps.wPeriodMax;
-
-
-	double desiredDeltaFrameTime = 1.0f / (double)desiredFps;
-	double preSleepDeltaFrameTime = (double)preSleepDeltaFrameClocks / (double)timerInfo->clocksPerSec;
-
-	uint64_t frameRemainderTimeMilliSec = (uint64_t)(desiredDeltaFrameTime - preSleepDeltaFrameTime) * 1000;
-	
-	if(frameRemainderTimeMilliSec > clockResolutonMilliSec)
+void Sleep(TimerInfo* timerInfo, int32_t desiredFps)
+{
+	int32_t desiredFrameDurationMilliSec = 1000 / desiredFps;
+	int32_t frameTimeRemainingMilliSec = desiredFrameDurationMilliSec - timerInfo->frameTimeMilliSec;
+	if( frameTimeRemainingMilliSec > 1 && frameTimeRemainingMilliSec < desiredFrameDurationMilliSec)
 	{
 		//frameRemaindertime is greater than clock resolution AND positive, so it can sleep.
 		//calculate the sleeptime which is the lowest granularity value of frameRemaindertime that will still guarantee that
 		//the sleep function wont accidentally sleep over the desireddeltaframetime.
-		uint64_t sleepTimeMilliSec = frameRemainderTimeMilliSec - (frameRemainderTimeMilliSec % clockResolutonMilliSec);
+		uint64_t sleepTimeMilliSec = frameTimeRemainingMilliSec - (frameTimeRemainingMilliSec % timerInfo->clockReslution);
 		Sleep((uint32_t)sleepTimeMilliSec);
 	}
-	else if(frameRemainderTimeMilliSec < 0)
+	else if(frameTimeRemainingMilliSec < 0)
 	{
 		Message("COULD NOT REACH DESIRED FPS");
 		//TODO heavier error warning or something?
@@ -228,10 +238,10 @@ void SleepUpdateTimer(TimerInfo* timerInfo, uint32_t desiredFps)
 	{
 		//do nothing, just barely met framerate
 	}
+	Tock(timerInfo);
+}
 
-	uint64_t postSleepClocks = GetClockCount();
-	timerInfo->deltaFrameClocks = postSleepClocks - timerInfo->lastFrameClockCount;
-	timerInfo->lastFrameClockCount = postSleepClocks;
-	timerInfo->framesPerSec[timerInfo->numFrames % 10] = timerInfo->clocksPerSec / timerInfo->deltaFrameClocks;
-	timerInfo->numFrames++;
+void DestroyTimerInfo(TimerInfo* timerInfo)
+{
+	timeEndPeriod(timerInfo->clockReslution);
 }

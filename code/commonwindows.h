@@ -125,11 +125,13 @@ struct Input
 struct TimerInfo
 {
 	uint64_t clocksPerSec;
-	uint64_t framesPerSec[10];
+	uint32_t clockReslution;
+	float framesPerSec[10];
 	uint64_t numFrames;
-	uint64_t lastFrameClockCount;
-	uint64_t deltaFrameClocks;
 
+	int64_t startClocks;
+	int64_t endClocks;
+	int64_t frameTimeMilliSec;
 };
 
 WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight);
@@ -142,6 +144,12 @@ TimerInfo NewTimerInfo();
 
 uint64_t GetAvgFps(const TimerInfo* timerInfo);
 
-uint64_t GetClockCount();
+int64_t GetClockCount();
 
-void SleepUpdateTimer(TimerInfo* timerInfo, uint32_t desiredFps);
+void Sleep(TimerInfo* timerInfo, int32_t desiredFps);
+
+void Tick(TimerInfo* timerInfo);
+
+void Tock(TimerInfo* timerInfo);
+
+void DestroyTimerInfo(TimerInfo* timerInfo);
