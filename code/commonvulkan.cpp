@@ -36,6 +36,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	const char* msg,
 	void* data)
 {
+#if VALIDATION_MESSAGES == true
 	std::string reportMessage;
 	if (flags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
 	{
@@ -66,13 +67,13 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VkDebugCallback(VkDebugReportFlagsEXT flags,
 	reportMessage += layerPrefix;
 	reportMessage += "] ";
 	reportMessage += msg;
-
+	Message(msg);
+#endif
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
 
 		Assert(0, "error in VK");
 		return true;
-
 	}
 
 	return false;
@@ -722,12 +723,17 @@ VkPipelineShaderStageCreateInfo NewShaderStageInfo(VkDevice logicalDevice, Pipel
 void DestroyPipelineInfo(VkDevice device, PipelineInfo* pipelineInfo)
 {
 	vkDestroyDescriptorPool(device, pipelineInfo->descriptorPool, nullptr);
-	vkDestroyRenderPass(device, pipelineInfo->renderPass, nullptr);
-	for(auto& shaderModule : pipelineInfo->shaderModules)
+	vkDestroyPipeline(device, pipelineInfo->pipeline, nullptr);
+	for (auto& shaderModule : pipelineInfo->shaderModules)
 	{
 		vkDestroyShaderModule(device, shaderModule, nullptr);
 	}
+	vkDestroyPipelineLayout(device, pipelineInfo->pipelineLayout, nullptr);
+	vkDestroyDescriptorSetLayout(device, pipelineInfo->descriptorSetLayout, nullptr);
 	vkDestroyPipelineCache(device, pipelineInfo->pipelineCache, nullptr);
+	vkDestroyRenderPass(device, pipelineInfo->renderPass, nullptr);
+
+
 	pipelineInfo = {};
 }
 
@@ -749,6 +755,7 @@ void DestroyDeviceInfo(DeviceInfo* deviceInfo)
 	vkFreeMemory(deviceInfo->device, deviceInfo->depthStencil.mem, nullptr);
 
 	vkDestroyCommandPool(deviceInfo->device, deviceInfo->cmdPool, nullptr);
+	
 
 	vkDestroySemaphore(deviceInfo->device, deviceInfo->presentComplete, nullptr);
 	vkDestroySemaphore(deviceInfo->device, deviceInfo->renderComplete, nullptr);

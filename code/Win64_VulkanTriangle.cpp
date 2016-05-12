@@ -429,7 +429,7 @@ void Init(MainMemory* m)
 	m->deviceInfo.setupCmdBuffer = NewSetupCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
 	//create cmd buffer for image barriers and converting tilings
 	//TODO what are tilings?
-	m->textureCmdBuffer = NewCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
+	//m->textureCmdBuffer = NewCommandBuffer(m->deviceInfo.device, m->deviceInfo.cmdPool);
 
 	m->vertexBuffer.vPos =
 	{
@@ -556,11 +556,7 @@ void Update(MainMemory* m)
 			m->camera.cameraPos.pitch -= yOffset * speed / 10;
 		}
 
-
-
 	}
-
-
 
 	UpdateCamera(m->deviceInfo.device, m->camera, m->windowInfo.clientWidth, m->windowInfo.clientHeight);
 	
@@ -590,9 +586,20 @@ void PollEvents(const WindowInfo* windowInfo)
 
 void Quit(MainMemory* m)
 {
+	//destroy app specific buffers etc
+	vkDestroyBuffer(m->deviceInfo.device, m->vertexBuffer.vBuffer, nullptr);
+	vkFreeMemory(m->deviceInfo.device, m->vertexBuffer.vMemory, nullptr);
+
+	vkDestroyBuffer(m->deviceInfo.device, m->vertexBuffer.iBuffer, nullptr);
+	vkFreeMemory(m->deviceInfo.device, m->vertexBuffer.iMemory, nullptr);
+
+	vkDestroyBuffer(m->deviceInfo.device, m->camera.buffer, nullptr);
+	vkFreeMemory(m->deviceInfo.device, m->camera.memory, nullptr);
+
+
+	//destroy "framework" buffers
 	DestroyTimerInfo(&m->timerInfo);
     DestroyWindowInfo(&m->windowInfo);
-
 	DestroyPipelineInfo(m->deviceInfo.device, &m->pipelineInfo);
 	DestroySurfaceInfo(m->vkInstance, m->deviceInfo.device, &m->surfaceInfo);
 	DestroyDeviceInfo(&m->deviceInfo);
@@ -611,16 +618,11 @@ int main(int argv, char** argc)
     while (m->input.running)
     {
 		Tick(&m->timerInfo);
-		int64_t startCounter = GetClockCount();
         PollEvents(&m->windowInfo);
-		
-
-
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
 		Tock(&m->timerInfo);
-		Sleep(&m->timerInfo, 120);
-
+		Sleep(&m->timerInfo, 30);
     }
     Quit(m);
     delete m;

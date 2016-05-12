@@ -64,15 +64,15 @@ struct DeviceInfo
 
 struct PipelineInfo
 {
-	std::vector<VkShaderModule> shaderModules;
 	VkRenderPass renderPass;
 	VkPipelineCache pipelineCache;
 	VkDescriptorSetLayout descriptorSetLayout;
-	VkDescriptorSet descriptorSet;
 	VkPipelineLayout pipelineLayout;
-	VkDescriptorPool descriptorPool;
-
+	std::vector<VkShaderModule> shaderModules;
 	VkPipeline pipeline;
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSet descriptorSet;
+
 };
 
 struct DebugInfo

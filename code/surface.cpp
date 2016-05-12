@@ -419,11 +419,13 @@ void DestroySurfaceInfo(VkInstance vkInstance, VkDevice device, SurfaceInfo* sur
 {
 	for (uint32_t i = 0; i < surfaceInfo->imageCount; i++)
 	{
+		//TODO is image destroyed along with its associated imageview?
+		//vkDestroyImage(device, surfaceInfo->images[i], nullptr);
 		vkDestroyImageView(device, surfaceInfo->views[i], nullptr);
-		vkDestroyImage(device, surfaceInfo->images[i], nullptr);
-	}
-	vkDestroySurfaceKHR(vkInstance, surfaceInfo->surface, nullptr);
-	//DestroySwapchainKHR(device, surfaceInfo->swapChain, nullptr);
 
+	}
+
+	DestroySwapchainKHR(device, surfaceInfo->swapChain, nullptr);
+	vkDestroySurfaceKHR(vkInstance, surfaceInfo->surface, nullptr);
 	surfaceInfo = {};
 }
