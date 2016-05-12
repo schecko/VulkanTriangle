@@ -1,2 +1,6 @@
-﻿  VulkanTriangle.vcxproj -> D:\scottsdocs\sourcecode\VulkanTriangle\VulkanTriangle\x64\Debug\VulkanTriangle.exe
+﻿  commonwindows.cpp
+d:\scottsdocs\sourcecode\vulkantriangle\code\commonwindows.cpp(156): warning C4244: 'initializing': conversion from 'LONGLONG' to 'uint32_t', possible loss of data
+d:\scottsdocs\sourcecode\vulkantriangle\code\commonwindows.cpp(209): warning C4244: '+=': conversion from 'const float' to 'uint64_t', possible loss of data
+d:\scottsdocs\sourcecode\vulkantriangle\code\commonwindows.cpp(246): warning C4244: 'initializing': conversion from 'int64_t' to 'int32_t', possible loss of data
+  VulkanTriangle.vcxproj -> D:\scottsdocs\sourcecode\VulkanTriangle\VulkanTriangle\x64\Debug\VulkanTriangle.exe
   VulkanTriangle.vcxproj -> D:\scottsdocs\sourcecode\VulkanTriangle\VulkanTriangle\x64\Debug\VulkanTriangle.pdb (Partial PDB)

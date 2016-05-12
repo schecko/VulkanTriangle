@@ -327,13 +327,13 @@ void BuildCmdBuffers(const DeviceInfo* deviceInfo,  const PipelineInfo* pipeline
 void Init(MainMemory* m)
 {
 
-    m->input.running = true;
     m->consoleHandle = GetConsoleWindow();
     //ShowWindow(m->consoleHandle, SW_HIDE);
 	m->camera.cameraPos = NewCameraPos();
 	m->timerInfo = NewTimerInfo();
 
     m->windowInfo = NewWindowInfo(EXE_NAME, &m->input, 1200, 800);
+	m->input = NewInputInfo(&m->windowInfo);
 	//ShowWindow(m->windowHandle, SW_HIDE);
 
 #if VALIDATION_LAYERS
@@ -527,24 +527,23 @@ void Render(const DeviceInfo* deviceInfo, SurfaceInfo* surfaceInfo)
 
 void Update(MainMemory* m)
 {
-	Input input = m->input;
+	InputInfo input = m->input;
 	float speed = CAMERA_SPEED * m->timerInfo.frameTimeMilliSec;
 	if(input.keys[keyW])
 	{
-		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
-		//Message(m->camera.cameraPos.position.z);
+		m->camera.cameraPos.position += (m->camera.cameraPos.front * speed * 10.0f);
 	}
 	if (input.keys[keyS])
 	{
-		m->camera.cameraPos.position -= m->camera.cameraPos.position + m->camera.cameraPos.front * speed;
+		m->camera.cameraPos.position -= (m->camera.cameraPos.front * speed* 10.0f);
 	}
 	if (input.keys[keyA])
 	{
-		m->camera.cameraPos.position += m->camera.cameraPos.position + m->camera.cameraPos.right * speed;
+		m->camera.cameraPos.position -= (m->camera.cameraPos.right * speed* 10.0f);
 	}
 	if (input.keys[keyD])
 	{
-		m->camera.cameraPos.position -= m->camera.cameraPos.position + m->camera.cameraPos.right * speed;
+		m->camera.cameraPos.position += (m->camera.cameraPos.right * speed* 10.0f);
 	}
 	if(input.mouseInWindow)
 	{
@@ -553,8 +552,8 @@ void Update(MainMemory* m)
 			//mouse is inside clientrect and player is holding down left mouse button
 			float xOffset = input.lastMousePos.x - input.mousePos.x;
 			float yOffset = input.mousePos.y - input.lastMousePos.y;
-			m->camera.cameraPos.yaw += xOffset;
-			m->camera.cameraPos.pitch += yOffset;
+			m->camera.cameraPos.yaw += xOffset * speed / 10;
+			m->camera.cameraPos.pitch -= yOffset * speed / 10;
 		}
 
 
@@ -615,19 +614,12 @@ int main(int argv, char** argc)
 		int64_t startCounter = GetClockCount();
         PollEvents(&m->windowInfo);
 		
-		for (int i = 0; i < 1000; i++)
-		{
-			for (int j = 0; j < 1000; j++)
-			{
-				int you = i * j;
-			}
-		}
+
 
 		Update(m);
         Render(&m->deviceInfo, &m->surfaceInfo);
 		Tock(&m->timerInfo);
-		Sleep(&m->timerInfo, 15);
-		Message(GetAvgFps(&m->timerInfo));
+		Sleep(&m->timerInfo, 120);
 
     }
     Quit(m);

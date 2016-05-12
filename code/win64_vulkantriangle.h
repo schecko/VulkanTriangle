@@ -4,7 +4,6 @@
 #include <vulkan/vulkan.h>
 #include <windows.h>
 #include <vector>
-#include <chrono>
 
 #include "commonvulkan.h"
 #include "surface.h"
@@ -54,7 +53,7 @@ struct MainMemory
 	WindowInfo windowInfo;
 	TimerInfo timerInfo;
 
-	Input input;
+	InputInfo input;
 
 	VkInstance vkInstance;
 	SurfaceInfo surfaceInfo;

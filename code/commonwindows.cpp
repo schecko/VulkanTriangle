@@ -9,7 +9,7 @@
 //handle the windows messages
 LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 {
-	Input* input = (Input*)GetWindowLongPtr(hwnd, 0);
+	InputInfo* input = (InputInfo*)GetWindowLongPtr(hwnd, 0);
 	switch (msg)
 	{
 		case WM_CREATE:
@@ -52,7 +52,15 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 		case WM_MOUSEHOVER:
 			{
 				BOOL tracked = TrackMouseEvent(&input->mouseEvent);
-				input->mouseInWindow = (bool)tracked;
+				if(tracked == 0x1)
+				{
+					input->mouseInWindow = true;
+				}else
+				{
+					input->mouseInWindow = false;
+					
+				}
+
 				input->lastMousePos = input->mousePos;
 				input->mousePos = glm::vec2((float)GET_X_LPARAM(lP), (float)GET_Y_LPARAM(lP));
 			}
@@ -75,8 +83,7 @@ LRESULT CALLBACK MessageHandler(HWND hwnd, UINT msg, WPARAM wP, LPARAM lP)
 	return 0;
 }
 
-//create a windows window, pass a pointer to a struct for input events
-//returns a handle to the created window.
+
 WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight)
 {
 
@@ -127,12 +134,12 @@ WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidt
 	return windowInfo;
 }
 
+
 void DestroyWindowInfo(WindowInfo* windowInfo)
 {
 	DestroyWindow(windowInfo->windowHandle);
 	windowInfo = {};
 }
-
 
 
 File OpenFile(std::string fileName)
@@ -168,6 +175,7 @@ File OpenFile(std::string fileName)
 	return file;	
 }
 
+
 TimerInfo NewTimerInfo()
 {
 	TimerInfo timerInfo = {};
@@ -182,6 +190,7 @@ TimerInfo NewTimerInfo()
 	timerInfo.clockReslution = timeCaps.wPeriodMin;
 	return timerInfo;
 }
+
 
 int64_t GetClockCount()
 {
@@ -204,11 +213,23 @@ uint64_t GetAvgFps(const TimerInfo* timerInfo)
 	return avgFps;
 }
 
+InputInfo NewInputInfo(const WindowInfo* windowInfo)
+{
+	InputInfo iInfo = {};
+	iInfo.running = true;
+	iInfo.mouseEvent.cbSize = sizeof(TRACKMOUSEEVENT);
+	iInfo.mouseEvent.dwFlags = TME_HOVER | TME_LEAVE;
+	iInfo.mouseEvent.hwndTrack = windowInfo->windowHandle;
+	iInfo.mouseEvent.dwHoverTime = HOVER_DEFAULT;
+	return iInfo;
+}
+
 void Tick(TimerInfo* timerInfo)
 {
 	timerInfo->startClocks = GetClockCount();
 	timerInfo->numFrames++;
 }
+
 
 void Tock(TimerInfo* timerInfo)
 {
@@ -217,6 +238,7 @@ void Tock(TimerInfo* timerInfo)
 	timerInfo->frameTimeMilliSec = (1000 * frameClocks) / timerInfo->clocksPerSec;
 	timerInfo->framesPerSec[timerInfo->numFrames % 10] = (float)timerInfo->clocksPerSec / (float)frameClocks;
 }
+
 
 void Sleep(TimerInfo* timerInfo, int32_t desiredFps)
 {
@@ -229,16 +251,17 @@ void Sleep(TimerInfo* timerInfo, int32_t desiredFps)
 		//the sleep function wont accidentally sleep over the desireddeltaframetime.
 		uint64_t sleepTimeMilliSec = frameTimeRemainingMilliSec - (frameTimeRemainingMilliSec % timerInfo->clockReslution);
 		Sleep((uint32_t)sleepTimeMilliSec);
+		//update the timer since the frames duration has changed
+		Tock(timerInfo);
 	}
 	else if(frameTimeRemainingMilliSec < 0)
 	{
-		Message("COULD NOT REACH DESIRED FPS");
+		//Message("COULD NOT REACH DESIRED FPS");
 		//TODO heavier error warning or something?
 	}else
 	{
 		//do nothing, just barely met framerate
 	}
-	Tock(timerInfo);
 }
 
 void DestroyTimerInfo(TimerInfo* timerInfo)

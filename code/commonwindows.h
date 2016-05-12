@@ -112,7 +112,7 @@ struct WindowInfo
 };
 
 
-struct Input
+struct InputInfo
 {
 	bool running;
 	bool keys[InputCodesSize];
@@ -134,22 +134,43 @@ struct TimerInfo
 	int64_t frameTimeMilliSec;
 };
 
+//returns an InputInfo struct, and requires a valid/initialized windowInfo struct for its hwnd.
+InputInfo NewInputInfo(const WindowInfo* windowInfo);
+
+//create a windows window, pass a pointer to a struct for input events
+//returns a handle to the created window.
 WindowInfo NewWindowInfo(const char* appName, void* pointer, uint32_t clientWidth, uint32_t clientHeight);
 
+
+//returns a struct containing the pointer to the data and data size of the file specified by its absolute path
 File OpenFile(std::string fileName);
 
+//destroy the windowinfo
+//really just a wrapper to destroy the window itself
 void DestroyWindowInfo(WindowInfo* windowInfo);
 
+
+//create a new timerinfo struct, this function fills in constants such as the clock freqency
+//provided by windows etc
 TimerInfo NewTimerInfo();
 
+//returns the average framerate of the last 10 frames
 uint64_t GetAvgFps(const TimerInfo* timerInfo);
 
+//returns the number of clock cycles since process startup
 int64_t GetClockCount();
 
+//designed to be used along with tick/tock functions to limit the framerate of the application
+//use tick at the beginning of the frame and tock at the end of the frame then call sleep
+//with the desired fps to limit the framerate.
+//TODO this function is a little unreliable when there is a very small amount of work to do in a 
+//single frame, consider changing the units to microseconds instead of milliseconds?
 void Sleep(TimerInfo* timerInfo, int32_t desiredFps);
 
+//update the starting time and increment the number of frames
 void Tick(TimerInfo* timerInfo);
 
+//update the rest of the timerinfo struct since the end of the desired block of code has been reached
 void Tock(TimerInfo* timerInfo);
 
 void DestroyTimerInfo(TimerInfo* timerInfo);
